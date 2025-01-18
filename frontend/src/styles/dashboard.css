@@ -1,0 +1,20 @@
+// App.js
+import React from 'react';
+import DashboardLayout from './components/DashboardLayout';
+import TradingDashboard from './components/TradingDashboard';
+import DemoDashboard from './components/DemoDashboard';
+
+function App() {
+  return (
+    <DashboardLayout>
+      <div className="p-8">
+        <TradingDashboard />
+        <div className="mt-8">
+          <DemoDashboard />
+        </div>
+      </div>
+    </DashboardLayout>
+  );
+}
+
+export default App;

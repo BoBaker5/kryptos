@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <!-- Background -->
+  <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%" style="stop-color:#000B18"/>
+    <stop offset="100%" style="stop-color:#001F3F"/>
+  </linearGradient>
+  <rect width="200" height="200" fill="url(#bg)"/>
+
+  <!-- Robot Head -->
+  <rect x="40" y="40" width="120" height="120" fill="#001F3F" stroke="#87CEEB" stroke-width="4">
+    <animate attributeName="stroke-opacity" values="1;0.5;1" dur="2s" repeatCount="indefinite"/>
+  </rect>
+  
+  <!-- Circular Eyes -->
+  <circle cx="80" cy="90" r="12" fill="#87CEEB">
+    <animate attributeName="opacity" values="1;0.7;1" dur="1.5s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="120" cy="90" r="12" fill="#87CEEB">
+    <animate attributeName="opacity" values="1;0.7;1" dur="1.5s" repeatCount="indefinite"/>
+  </circle>
+  
+  <!-- Antenna with pulse and glowing orb -->
+  <line x1="100" y1="40" x2="100" y2="20" stroke="#87CEEB" stroke-width="4">
+    <animate attributeName="stroke-width" values="4;6;4" dur="1s" repeatCount="indefinite"/>
+  </line>
+  <circle cx="100" cy="15" r="6" fill="#87CEEB">
+    <animate attributeName="r" values="5;7;5" dur="1.5s" repeatCount="indefinite"/>
+    <animate attributeName="fill-opacity" values="1;0.7;1" dur="1.5s" repeatCount="indefinite"/>
+  </circle>
+  
+  <!-- Circuit Lines (static) -->
+  <line x1="60" y1="120" x2="140" y2="120" stroke="#87CEEB" stroke-width="2"/>
+  <line x1="60" y1="130" x2="140" y2="130" stroke="#87CEEB" stroke-width="2"/>
+  
+  <!-- Side Accents -->
+  <rect x="30" y="70" width="4" height="40" fill="#87CEEB">
+    <animate attributeName="opacity" values="1;0.5;1" dur="2s" repeatCount="indefinite"/>
+  </rect>
+  <rect x="166" y="70" width="4" height="40" fill="#87CEEB">
+    <animate attributeName="opacity" values="1;0.5;1" dur="2s" repeatCount="indefinite"/>
+  </rect>
+  
+  <!-- Text -->
+  <text x="100" y="180" text-anchor="middle" 
+        font-family="Helvetica, sans-serif" font-size="20" 
+        fill="#87CEEB">
+    KRYPTOS
+    <animate attributeName="fill-opacity" values="1;0.7;1" dur="3s" repeatCount="indefinite"/>
+  </text>
+</svg>

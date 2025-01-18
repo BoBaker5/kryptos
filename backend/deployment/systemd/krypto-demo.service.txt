@@ -1,0 +1,16 @@
+# /etc/systemd/system/kryptos-demo.service
+[Unit]
+Description=Kryptos Trading Demo Bot
+After=network.target
+
+[Service]
+Type=simple
+User=your_service_user
+WorkingDirectory=/path/to/kryptos-trading/backend
+Environment=PYTHONPATH=/path/to/kryptos-trading/backend
+ExecStart=/usr/bin/python3 -m bot.demo_service
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
