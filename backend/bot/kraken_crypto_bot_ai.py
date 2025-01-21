@@ -997,6 +997,48 @@ class EnhancedKrakenCryptoBot:
                 'volume_trend': 0
             }
 
+    def get_positions(self):
+        """Get current live positions"""
+        try:
+            positions = []
+            if self.live_running and self.kraken:
+                open_positions = self.k.get_open_positions()
+                for pos in open_positions:
+                    current_price = self.get_latest_price(pos['pair'])
+                    if current_price:
+                        entry_price = float(pos['cost']) / float(pos['vol'])
+                        volume = float(pos['vol'])
+                        pnl = (current_price - entry_price) * volume
+                        pnl_percentage = ((current_price - entry_price) / entry_price) * 100
+    
+                        positions.append({
+                            'pair': pos['pair'],
+                            'volume': str(volume),
+                            'cost': str(entry_price * volume),
+                            'price': str(current_price),
+                            'pnl': str(pnl),
+                            'pnl_percentage': str(pnl_percentage)
+                        })
+            return positions
+        except Exception as e:
+            self.logger.error(f"Error getting live positions: {str(e)}")
+            return []
+    
+    def get_live_bot_status(self):
+        """Get live bot status"""
+        try:
+            return {
+                'status': 'running' if self.running else 'stopped',
+                'positions': self.get_positions(),
+                'balance': self.get_account_balance(),
+                'last_update': datetime.now().isoformat()
+            }
+        except Exception as e:
+            return {
+                'status': 'Error',
+                'error': str(e)
+            }
+    
     def _check_divergence(self, price: pd.Series, indicator: pd.Series, window: int = 10) -> int:
         """Check for price-indicator divergence"""
         try:
