@@ -711,42 +711,49 @@ class DemoKrakenBot:
             self.logger.error(f"Error getting demo balance: {str(e)}")
             return pd.Series(self.demo_balance)
     
-        def get_demo_positions(self):
-            """Get current demo positions"""
-            try:
-                formatted_positions = []
-                for symbol, pos in self.demo_positions.items():
-                    current_price = self.get_latest_price(symbol)
-                    if current_price:
-                        entry_price = pos['entry_price']
-                        volume = pos['volume']
-                        pnl = (current_price - entry_price) * volume
-                        pnl_percentage = ((current_price - entry_price) / entry_price) * 100
-        
-                        formatted_pos = {
-                            'pair': symbol,
-                            'vol': str(volume),
-                            'cost': str(entry_price * volume),
-                            'price': str(current_price),
-                            'pnl': str(pnl),
-                            'pnl_percentage': str(pnl_percentage),
-                            'entry_time': pos['entry_time'].isoformat()
-                        }
-                        formatted_positions.append(formatted_pos)
-        
-                # Log positions
-                if formatted_positions:
-                    self.logger.info("\n=== Demo Positions ===")
-                    for pos in formatted_positions:
-                        self.logger.info(f"{pos['pair']}: {float(pos['vol']):.8f} @ ${float(pos['price']):.8f}")
-                        self.logger.info(f"P&L: ${float(pos['pnl']):.2f} ({float(pos['pnl_percentage']):.2f}%)")
-        
-                return formatted_positions
-        
-            except Exception as e:
-                self.logger.error(f"Error getting demo positions: {str(e)}")
-                return []
-        
+    def get_demo_positions(self):
+        """Get current demo positions"""
+        try:
+            formatted_positions = []
+            for symbol, pos in self.demo_positions.items():
+                current_price = self.get_latest_price(symbol)
+                if current_price:
+                    entry_price = pos['entry_price']
+                    volume = pos['volume']
+                    pnl = (current_price - entry_price) * volume
+                    pnl_percentage = ((current_price - entry_price) / entry_price) * 100
+    
+                    formatted_pos = {
+                        'pair': symbol,
+                        'volume': str(volume),
+                        'cost': str(entry_price * volume),
+                        'price': str(current_price),
+                        'pnl': str(pnl),
+                        'pnl_percentage': str(pnl_percentage),
+                        'entry_time': pos['entry_time'].isoformat()
+                    }
+                    formatted_positions.append(formatted_pos)
+    
+            return formatted_positions
+        except Exception as e:
+            self.logger.error(f"Error getting demo positions: {str(e)}")
+            return []
+    
+    def get_demo_bot_status(self):
+        """Get demo bot status"""
+        try:
+            return {
+                'status': 'running' if self.running else 'stopped',
+                'positions': self.get_demo_positions(),
+                'balance': self.demo_balance,
+                'last_update': datetime.now().isoformat()
+            }
+        except Exception as e:
+            return {
+                'status': 'Error',
+                'error': str(e)
+            }
+            
     def calculate_total_equity(self):
         """Calculate total portfolio value including positions"""
         try:
