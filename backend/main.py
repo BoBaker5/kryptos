@@ -7,6 +7,7 @@ import os
 import asyncio
 from pathlib import Path
 import logging
+from datetime import datetime
 
 # Configure logging
 logging.basicConfig(
@@ -26,6 +27,7 @@ print(f"Looking for bot in: {BOT_DIR}")
 try:
     from kraken_crypto_bot_ai import EnhancedKrakenCryptoBot
     from demo_bot import DemoTradingBot
+    from bot_manager import BotManager
     print("Successfully imported trading bots")
     BOT_AVAILABLE = True
 except ImportError as e:
@@ -49,9 +51,15 @@ class KrakenCredentials(BaseModel):
     api_key: str
     secret_key: str
 
-# Store active bots and their data
+class APIResponse(BaseModel):
+    status: str
+    message: str
+    data: Dict = None
+
+# Initialize global bot instances
 active_bots = {}
 demo_bot = None
+bot_manager = BotManager()
 
 async def run_demo_bot():
     global demo_bot
@@ -72,11 +80,25 @@ async def startup_event():
         demo_bot = DemoTradingBot()
         demo_bot.running = True
         
+        # Start bot manager
+        await bot_manager.start_bots()
+        
         # Start demo bot in background task
         asyncio.create_task(demo_bot.run())
         logger.info("Official demo bot started successfully")
     except Exception as e:
         logger.error(f"Error starting demo bot: {e}")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Stop all bots when the application shuts down"""
+    try:
+        await bot_manager.stop_bots()
+        if demo_bot:
+            demo_bot.running = False
+        logger.info("All bots stopped successfully")
+    except Exception as e:
+        logger.error(f"Error stopping bots: {str(e)}")
 
 @app.get("/demo-status")
 async def get_demo_status():
@@ -118,65 +140,61 @@ async def get_demo_status():
             "performance_metrics": []
         }
 
-@app.get("/bot-status/{user_id}")
+@app.get("/api/bot-status/{user_id}")
 async def get_bot_status(user_id: int):
-    if not BOT_AVAILABLE:
-        logger.warning("Bot not available")
-        return {
-            "status": "error",
-            "message": "Trading bot not available",
-            "positions": [],
-            "portfolio_value": 0,
-            "daily_pnl": 0
-        }
-        
-    if user_id not in active_bots:
-        logger.info("No active bot for user")
-        return {
-            "status": "stopped",
-            "positions": [],
-            "portfolio_value": 0,
-            "daily_pnl": 0
-        }
-    
-    bot = active_bots[user_id]["bot"]
+    """Get status for both demo and live bots"""
     try:
-        logger.info("Getting bot data...")
-        # Get actual balance
-        balance = bot.get_account_balance()
-        logger.info(f"Account balance: {balance}")
-        
-        # Get positions
-        positions = []
-        if hasattr(bot, 'position_tracker'):
-            logger.info("Getting positions...")
-            for symbol, pos in bot.position_tracker.positions.items():
-                logger.info(f"Position found for {symbol}: {pos}")
-                current_price = bot.get_latest_price(symbol)
-                if current_price:
-                    pnl = ((current_price - pos['entry_price']) / pos['entry_price']) * 100
-                    positions.append({
-                        "symbol": symbol,
-                        "quantity": pos['quantity'],
-                        "entry_price": pos['entry_price'],
-                        "current_price": current_price,
-                        "pnl": pnl
-                    })
-        
-        return {
-            "status": "running" if getattr(bot, 'running', False) else "stopped",
-            "positions": positions,
-            "portfolio_value": float(balance.get('ZUSD', 0)),
-            "daily_pnl": getattr(bot, 'daily_pnl', 0)
-        }
+        demo_status = bot_manager.get_demo_bot_status()
+        live_status = bot_manager.get_live_bot_status()
+        return APIResponse(
+            status="success",
+            message="Bot status retrieved successfully",
+            data={
+                "demo": demo_status,
+                "live": live_status,
+                "running": bot_manager.running
+            }
+        )
     except Exception as e:
-        logger.error(f"Error getting bot status: {e}")
-        return {
-            "status": "error",
-            "positions": [],
-            "portfolio_value": 0,
-            "daily_pnl": 0
-        }
+        logger.error(f"Error getting bot status: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
+@app.get("/api/demo-status")
+async def get_demo_bot_status():
+    """Get demo bot status"""
+    try:
+        status_data = bot_manager.get_demo_bot_status()
+        return APIResponse(
+            status="success",
+            message="Demo bot status retrieved successfully",
+            data=status_data
+        )
+    except Exception as e:
+        logger.error(f"Error getting demo status: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
+@app.get("/api/live-status")
+async def get_live_bot_status():
+    """Get live bot status"""
+    try:
+        status_data = bot_manager.get_live_bot_status()
+        return APIResponse(
+            status="success",
+            message="Live bot status retrieved successfully",
+            data=status_data
+        )
+    except Exception as e:
+        logger.error(f"Error getting live status: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
 
 @app.post("/start-bot/{user_id}")
 async def start_bot(user_id: int, credentials: KrakenCredentials):
@@ -223,3 +241,35 @@ async def stop_bot(user_id: int):
     except Exception as e:
         logger.error(f"Error stopping bot: {e}")
         raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/metrics")
+async def get_combined_metrics():
+    """Get combined metrics from both bots"""
+    try:
+        metrics = bot_manager.get_combined_metrics()
+        return APIResponse(
+            status="success",
+            message="Metrics retrieved successfully",
+            data=metrics
+        )
+    except Exception as e:
+        logger.error(f"Error getting metrics: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
+# Health check endpoint
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "demo_bot": bot_manager.get_demo_bot_status().get("status", "unknown"),
+        "live_bot": bot_manager.get_live_bot_status().get("status", "unknown")
+    }
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
