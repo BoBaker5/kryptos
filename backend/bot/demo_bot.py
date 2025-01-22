@@ -567,9 +567,6 @@ class PositionTracker:
 class DemoKrakenBot:
     def __init__(self):
         """Initialize the demo trading bot"""
-        # Initialize with demo credentials since we're just using public data
-        super().__init__(api_key="demo", secret_key="demo")
-            
         # Initialize logging first
         self.logger = self._setup_logging()
     
