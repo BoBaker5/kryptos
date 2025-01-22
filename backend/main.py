@@ -25,17 +25,17 @@ print(f"Python path: {sys.path}")
 print(f"Looking for bot in: {BOT_DIR}")
 
 try:
-    from kraken_crypto_bot_ai import EnhancedKrakenCryptoBot
-    from demo_bot import DemoTradingBot
-    from bot_manager import BotManager
+    from bot.kraken_crypto_bot_ai import EnhancedKrakenCryptoBot
+    from bot.demo_bot import DemoKrakenBot
+    from bot.bot_manager import BotManager
     print("Successfully imported trading bots")
     BOT_AVAILABLE = True
 except ImportError as e:
-    print(f"Error importing trading bot: {e}")
+    print(f"Error importing trading bot: {str(e)}")
     print(f"Current directory: {os.getcwd()}")
     BOT_AVAILABLE = False
     EnhancedKrakenCryptoBot = None
-    DemoTradingBot = None
+    DemoKrakenBot = None
 
 app = FastAPI()
 
@@ -61,23 +61,12 @@ active_bots = {}
 demo_bot = None
 bot_manager = BotManager()
 
-async def run_demo_bot():
-    global demo_bot
-    try:
-        logger.info("Starting demo bot...")
-        while True:
-            if demo_bot and demo_bot.running:
-                await demo_bot.update_portfolio()
-            await asyncio.sleep(5)
-    except Exception as e:
-        logger.error(f"Error in demo bot loop: {e}")
-
 @app.on_event("startup")
 async def startup_event():
     global demo_bot
     try:
         logger.info("Starting official demo bot...")
-        demo_bot = DemoTradingBot()
+        demo_bot = DemoKrakenBot(api_key="demo", secret_key="demo")
         demo_bot.running = True
         
         # Start bot manager
@@ -87,58 +76,19 @@ async def startup_event():
         asyncio.create_task(demo_bot.run())
         logger.info("Official demo bot started successfully")
     except Exception as e:
-        logger.error(f"Error starting demo bot: {e}")
+        logger.error(f"Error starting demo bot: {str(e)}")
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Stop all bots when the application shuts down"""
     try:
-        await bot_manager.stop_bots()
+        if hasattr(bot_manager, 'stop_bots'):
+            await bot_manager.stop_bots()
         if demo_bot:
             demo_bot.running = False
         logger.info("All bots stopped successfully")
     except Exception as e:
         logger.error(f"Error stopping bots: {str(e)}")
-
-@app.get("/demo-status")
-async def get_demo_status():
-    """Get status of the official demo bot"""
-    if not demo_bot:
-        return {
-            "status": "stopped",
-            "positions": [],
-            "portfolio_value": 1000000,
-            "daily_pnl": 0,
-            "performance_metrics": []
-        }
-    
-    try:
-        positions = []
-        for symbol, pos in demo_bot.position_tracker["positions"].items():
-            positions.append({
-                "symbol": symbol,
-                "quantity": pos['quantity'],
-                "entry_price": pos['entry_price'],
-                "current_price": pos['current_price'],
-                "pnl": ((pos['current_price'] - pos['entry_price']) / pos['entry_price']) * 100
-            })
-
-        return {
-            "status": "running",
-            "positions": positions,
-            "portfolio_value": demo_bot.portfolio_value,
-            "daily_pnl": demo_bot.daily_pnl,
-            "performance_metrics": demo_bot.performance_metrics[-100:]
-        }
-    except Exception as e:
-        logger.error(f"Error getting demo status: {e}")
-        return {
-            "status": "error",
-            "positions": [],
-            "portfolio_value": 1000000,
-            "daily_pnl": 0,
-            "performance_metrics": []
-        }
 
 @app.get("/api/bot-status/{user_id}")
 async def get_bot_status(user_id: int):
@@ -163,21 +113,45 @@ async def get_bot_status(user_id: int):
         )
 
 @app.get("/api/demo-status")
-async def get_demo_bot_status():
-    """Get demo bot status"""
+async def get_demo_status():
+    """Get status of the official demo bot"""
+    if not demo_bot:
+        return {
+            "status": "stopped",
+            "positions": [],
+            "portfolio_value": 1000000,
+            "daily_pnl": 0,
+            "performance_metrics": []
+        }
+    
     try:
-        status_data = bot_manager.get_demo_bot_status()
-        return APIResponse(
-            status="success",
-            message="Demo bot status retrieved successfully",
-            data=status_data
-        )
+        positions = []
+        if hasattr(demo_bot, 'position_tracker') and 'positions' in demo_bot.position_tracker:
+            for symbol, pos in demo_bot.position_tracker['positions'].items():
+                positions.append({
+                    "symbol": symbol,
+                    "quantity": pos['quantity'],
+                    "entry_price": pos['entry_price'],
+                    "current_price": pos['current_price'],
+                    "pnl": ((pos['current_price'] - pos['entry_price']) / pos['entry_price']) * 100
+                })
+
+        return {
+            "status": "running",
+            "positions": positions,
+            "portfolio_value": getattr(demo_bot, 'portfolio_value', 1000000),
+            "daily_pnl": getattr(demo_bot, 'daily_pnl', 0),
+            "performance_metrics": getattr(demo_bot, 'performance_metrics', [])[-100:]
+        }
     except Exception as e:
-        logger.error(f"Error getting demo status: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=str(e)
-        )
+        logger.error(f"Error getting demo status: {e}")
+        return {
+            "status": "error",
+            "positions": [],
+            "portfolio_value": 1000000,
+            "daily_pnl": 0,
+            "performance_metrics": []
+        }
 
 @app.get("/api/live-status")
 async def get_live_bot_status():
@@ -266,10 +240,15 @@ async def health_check():
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
-        "demo_bot": bot_manager.get_demo_bot_status().get("status", "unknown"),
-        "live_bot": bot_manager.get_live_bot_status().get("status", "unknown")
+        "demo_bot": "running" if demo_bot and demo_bot.running else "stopped",
+        "live_bot": "running" if bot_manager.live_running else "stopped"
     }
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8000,
+        log_level="info"
+    )
