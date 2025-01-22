@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Activity, DollarSign, LineChart } from 'lucide-react';
-import PerformanceChart from './PerformanceChart';
+import { ResponsiveContainer, Line, XAxis, YAxis, CartesianGrid, Tooltip, LineChart as RechartsLineChart } from 'recharts';
 
 const BotDashboard = ({ mode = 'live' }) => {
-  const API_URL = 'http://localhost:5000';
+  const API_URL = 'http://localhost:8000';
+  const userId = 1; // Temporary user ID for testing
   
   const [botData, setBotData] = useState({
     status: 'stopped',
@@ -30,7 +31,7 @@ const BotDashboard = ({ mode = 'live' }) => {
 
   const fetchBotStatus = async () => {
     try {
-      const endpoint = `/bot-status/${mode}`;
+      const endpoint = mode === 'demo' ? '/api/demo-status' : '/api/live-status';
       console.log('Fetching from:', `${API_URL}${endpoint}`);
       const response = await axios.get(`${API_URL}${endpoint}`);
       
@@ -67,22 +68,18 @@ const BotDashboard = ({ mode = 'live' }) => {
 
     try {
       setIsActionLoading(true);
-      const endpoint = `/start-bot/${mode}`;
+      const endpoint = `/api/start-bot/${userId}`;
       const response = await axios.post(`${API_URL}${endpoint}`, {
         apiKey: apiConfig.apiKey,
         apiSecret: apiConfig.apiSecret
       });
       
       if (response.data.status === 'success') {
-        setBotData(prevData => ({
-          ...prevData,
-          status: 'running'
-        }));
         await fetchBotStatus();
       }
     } catch (err) {
       console.error('Start bot error:', err);
-      setError(err.response?.data?.message || 'Failed to start bot. Please check your API keys and try again.');
+      setError(err.response?.data?.detail || 'Failed to start bot. Please check your API keys and try again.');
     } finally {
       setIsActionLoading(false);
     }
@@ -91,20 +88,15 @@ const BotDashboard = ({ mode = 'live' }) => {
   const handleStopBot = async () => {
     try {
       setIsActionLoading(true);
-      const endpoint = `/stop-bot/${mode}`;
-      const response = await axios.post(`${API_URL}${endpoint}`, {
-        apiKey: apiConfig.apiKey
-      });
+      const endpoint = `/api/stop-bot/${userId}`;
+      const response = await axios.post(`${API_URL}${endpoint}`);
+      
       if (response.data.status === 'success') {
-        setBotData(prevData => ({
-          ...prevData,
-          status: 'stopped'
-        }));
         await fetchBotStatus();
       }
     } catch (err) {
       console.error('Stop bot error:', err);
-      setError('Failed to stop bot. Please try again.');
+      setError(err.response?.data?.detail || 'Failed to stop bot. Please try again.');
     } finally {
       setIsActionLoading(false);
     }
@@ -179,6 +171,45 @@ const BotDashboard = ({ mode = 'live' }) => {
     }
   };
 
+  const renderPerformanceChart = () => {
+    if (!botData.performanceHistory?.length) {
+      return (
+        <div className="bg-white rounded-lg shadow p-6 mb-6 h-80 flex items-center justify-center">
+          <p className="text-gray-500">No performance data available</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="bg-white rounded-lg shadow p-6 mb-6">
+        <h2 className="text-xl font-semibold mb-4">Performance History</h2>
+        <div className="h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <RechartsLineChart data={botData.performanceHistory}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis 
+                dataKey="timestamp" 
+                tickFormatter={(time) => new Date(time).toLocaleTimeString()} 
+              />
+              <YAxis />
+              <Tooltip 
+                formatter={(value) => [`$${value.toLocaleString()}`, 'Portfolio Value']}
+                labelFormatter={(label) => new Date(label).toLocaleString()}
+              />
+              <Line 
+                type="monotone" 
+                dataKey="value" 
+                stroke="#87CEEB" 
+                strokeWidth={2}
+                dot={false}
+              />
+            </RechartsLineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    );
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -196,11 +227,11 @@ const BotDashboard = ({ mode = 'live' }) => {
         
         <div className="flex items-center gap-4">
           <div className={`px-3 py-1 rounded-full ${
-            mode === 'demo' || botData.status === 'running' 
+            botData.status === 'running' 
               ? 'bg-green-100 text-green-800' 
               : 'bg-red-100 text-red-800'
           }`}>
-            {mode === 'demo' || botData.status === 'running' ? 'Active' : 'Stopped'}
+            {botData.status === 'running' ? 'Active' : 'Stopped'}
           </div>
           {renderActionButton()}
         </div>
@@ -262,10 +293,7 @@ const BotDashboard = ({ mode = 'live' }) => {
       </div>
 
       {/* Performance Chart */}
-      <PerformanceChart 
-        mode={mode} 
-        data={botData.performanceHistory || []} 
-      />
+      {renderPerformanceChart()}
 
       {/* Positions Table */}
       <div className="bg-white rounded-lg shadow p-6 mb-6">
