@@ -565,14 +565,19 @@ class PositionTracker:
         return None
 
 class DemoKrakenBot:
-    def __init__(self):
+    def __init__(self, initial_balance=100000.0):
         """Initialize the demo trading bot"""
         # Initialize logging first
         self.logger = self._setup_logging()
+        self.db_name = 'crypto_trading.db'
     
         try:
+            # Initialize database
+            self.init_db()
+            # Add position tracker
+            self.position_tracker = PositionTracker()
             # Initialize Kraken API with rate limiting
-            self.kraken = krakenex.API(api_key="demo", secret_key="demo")
+            self.kraken = krakenex.API()
             self.k = KrakenAPI(self.kraken, retry=0.5)
             self.running = True
     
@@ -586,7 +591,6 @@ class DemoKrakenBot:
             # Initialize MLModelManager and related attributes
             self.model_manager = MLModelManager()
             self.model_name = 'trading_model.joblib'
-            self.db_name = 'crypto_trading.db'
             self.is_initially_trained = False
             self.training_completed = False
     
@@ -595,7 +599,7 @@ class DemoKrakenBot:
     
             # Initialize demo account state
             self.demo_balance = {
-                'ZUSD': 100000.0,  # Starting balance
+                'ZUSD': initial_balance,  # Starting balance
                 'SOLUSD': 0,
                 'AVAXUSD': 0,
                 'XRPUSD': 0,
@@ -608,8 +612,8 @@ class DemoKrakenBot:
             self.trade_history = []
             self.portfolio_history = [{
                 'timestamp': datetime.now(),
-                'balance': 100000.0,
-                'equity': 100000.0
+                'balance': initial_balance,
+                'equity': initial_balance
             }]
     
             # Market conditions for smaller account
@@ -668,9 +672,6 @@ class DemoKrakenBot:
             self.api_retry_delay = 1  # Initial retry delay for exceeded rate limits
             self.max_retry_delay = 60
     
-            # Load saved state if available
-            self.load_demo_state()
-    
             self.market_state = {symbol: {'trend': None, 'volatility': None} for symbol in self.symbols}
             self.logger.info("Demo Kraken trading bot initialization completed successfully")
     
@@ -679,6 +680,7 @@ class DemoKrakenBot:
             raise
 
     def get_demo_balance(self):
+        """Get current demo account balance"""
         try:
             # Calculate total value of positions
             position_value = 0
@@ -708,49 +710,42 @@ class DemoKrakenBot:
             self.logger.error(f"Error getting demo balance: {str(e)}")
             return pd.Series(self.demo_balance)
     
-    def get_demo_positions(self):
-        """Get current demo positions"""
-        try:
-            formatted_positions = []
-            for symbol, pos in self.demo_positions.items():
-                current_price = self.get_latest_price(symbol)
-                if current_price:
-                    entry_price = pos['entry_price']
-                    volume = pos['volume']
-                    pnl = (current_price - entry_price) * volume
-                    pnl_percentage = ((current_price - entry_price) / entry_price) * 100
-    
-                    formatted_pos = {
-                        'pair': symbol,
-                        'volume': str(volume),
-                        'cost': str(entry_price * volume),
-                        'price': str(current_price),
-                        'pnl': str(pnl),
-                        'pnl_percentage': str(pnl_percentage),
-                        'entry_time': pos['entry_time'].isoformat()
-                    }
-                    formatted_positions.append(formatted_pos)
-    
-            return formatted_positions
-        except Exception as e:
-            self.logger.error(f"Error getting demo positions: {str(e)}")
-            return []
-    
-    def get_demo_bot_status(self):
-        """Get demo bot status"""
-        try:
-            return {
-                'status': 'running' if self.running else 'stopped',
-                'positions': self.get_demo_positions(),
-                'balance': self.demo_balance,
-                'last_update': datetime.now().isoformat()
-            }
-        except Exception as e:
-            return {
-                'status': 'Error',
-                'error': str(e)
-            }
-            
+        def get_demo_positions(self):
+            """Get current demo positions"""
+            try:
+                formatted_positions = []
+                for symbol, pos in self.demo_positions.items():
+                    current_price = self.get_latest_price(symbol)
+                    if current_price:
+                        entry_price = pos['entry_price']
+                        volume = pos['volume']
+                        pnl = (current_price - entry_price) * volume
+                        pnl_percentage = ((current_price - entry_price) / entry_price) * 100
+        
+                        formatted_pos = {
+                            'pair': symbol,
+                            'vol': str(volume),
+                            'cost': str(entry_price * volume),
+                            'price': str(current_price),
+                            'pnl': str(pnl),
+                            'pnl_percentage': str(pnl_percentage),
+                            'entry_time': pos['entry_time'].isoformat()
+                        }
+                        formatted_positions.append(formatted_pos)
+        
+                # Log positions
+                if formatted_positions:
+                    self.logger.info("\n=== Demo Positions ===")
+                    for pos in formatted_positions:
+                        self.logger.info(f"{pos['pair']}: {float(pos['vol']):.8f} @ ${float(pos['price']):.8f}")
+                        self.logger.info(f"P&L: ${float(pos['pnl']):.2f} ({float(pos['pnl_percentage']):.2f}%)")
+        
+                return formatted_positions
+        
+            except Exception as e:
+                self.logger.error(f"Error getting demo positions: {str(e)}")
+                return []
+        
     def calculate_total_equity(self):
         """Calculate total portfolio value including positions"""
         try:
@@ -1383,48 +1378,104 @@ class DemoKrakenBot:
         else:
             return f"${price:.2f}"
 
-async def execute_trade_with_risk_management(self, symbol: str, signal: dict, price: float):
-    """Simulate trade execution using real market prices"""
-    try:
-        # Validate price
-        if not price or price <= 0:
-            self.logger.error(f"Invalid price for {symbol}: {price}")
-            return None
-
-        # Get minimum requirements for the symbol
-        requirements = self.get_minimum_order_requirements(symbol)
-        min_volume = requirements['min_vol']
-        
-        # Get current demo balance and positions
-        total_usd_balance = self.demo_balance['ZUSD']
-        
-        # SELL LOGIC
-        if signal['action'] == 'sell':
-            if symbol in self.demo_positions:
-                position = self.demo_positions[symbol]
-                quantity = position['volume']
+    async def execute_trade_with_risk_management(self, symbol: str, signal: dict, price: float):
+        """Simulate trade execution using real market prices"""
+        try:
+            # Validate price
+            if not price or price <= 0:
+                self.logger.error(f"Invalid price for {symbol}: {price}")
+                return None
+    
+            # Get minimum requirements for the symbol
+            requirements = self.get_minimum_order_requirements(symbol)
+            min_volume = requirements['min_vol']
+            
+            # Get current demo balance and positions
+            total_usd_balance = self.demo_balance['ZUSD']
+            
+            # SELL LOGIC
+            if signal['action'] == 'sell':
+                if symbol in self.demo_positions:
+                    position = self.demo_positions[symbol]
+                    quantity = position['volume']
+                    
+                    # Ensure minimum volume
+                    if quantity < min_volume:
+                        self.logger.warning(f"Position size {quantity} below minimum {min_volume}")
+                        return None
+                    
+                    # Calculate sale value
+                    sale_value = quantity * price
+                    
+                    # Update balances
+                    self.demo_balance['ZUSD'] += sale_value
+                    self.demo_balance[symbol] = 0
+                    del self.demo_positions[symbol]
+                    
+                    # Record trade
+                    trade = {
+                        'timestamp': datetime.now(),
+                        'symbol': symbol,
+                        'type': 'sell',
+                        'price': price,
+                        'quantity': quantity,
+                        'value': sale_value,
+                        'balance_after': self.demo_balance['ZUSD']
+                    }
+                    self.trade_history.append(trade)
+                    
+                    # Update portfolio history
+                    self.portfolio_history.append({
+                        'timestamp': datetime.now(),
+                        'balance': self.demo_balance['ZUSD'],
+                        'equity': self.calculate_total_equity()
+                    })
+                    
+                    self.logger.info(f"Demo SELL executed: {quantity} {symbol} @ ${price}")
+                    self.logger.info(f"Sale Value: ${sale_value:.2f}")
+                    self.logger.info(f"New Balance: ${self.demo_balance['ZUSD']:.2f}")
+                    return {'status': 'success', 'trade': trade}
+                    
+            # BUY LOGIC
+            elif signal['action'] == 'buy':
+                # Calculate position size based on current signal
+                position_size = self.calculate_position_size(symbol, signal)
+                if position_size <= 0:
+                    return None
+                    
+                quantity = position_size / price
                 
                 # Ensure minimum volume
                 if quantity < min_volume:
-                    self.logger.warning(f"Position size {quantity} below minimum {min_volume}")
+                    self.logger.warning(f"Calculated quantity {quantity} below minimum {min_volume}")
+                    quantity = min_volume
+                    position_size = quantity * price
+                
+                # Check if we have enough balance
+                if position_size > total_usd_balance:
+                    self.logger.warning(f"Insufficient demo balance for trade. Need ${position_size:.2f}, have ${total_usd_balance:.2f}")
                     return None
-                
-                # Calculate sale value
-                sale_value = quantity * price
-                
+                    
                 # Update balances
-                self.demo_balance['ZUSD'] += sale_value
-                self.demo_balance[symbol] = 0
-                del self.demo_positions[symbol]
+                self.demo_balance['ZUSD'] -= position_size
+                self.demo_balance[symbol] = self.demo_balance.get(symbol, 0) + quantity
+                
+                # Record position
+                self.demo_positions[symbol] = {
+                    'volume': quantity,
+                    'entry_price': price,
+                    'entry_time': datetime.now(),
+                    'high_price': price
+                }
                 
                 # Record trade
                 trade = {
                     'timestamp': datetime.now(),
                     'symbol': symbol,
-                    'type': 'sell',
+                    'type': 'buy',
                     'price': price,
                     'quantity': quantity,
-                    'value': sale_value,
+                    'value': position_size,
                     'balance_after': self.demo_balance['ZUSD']
                 }
                 self.trade_history.append(trade)
@@ -1436,72 +1487,16 @@ async def execute_trade_with_risk_management(self, symbol: str, signal: dict, pr
                     'equity': self.calculate_total_equity()
                 })
                 
-                self.logger.info(f"Demo SELL executed: {quantity} {symbol} @ ${price}")
-                self.logger.info(f"Sale Value: ${sale_value:.2f}")
+                self.logger.info(f"Demo BUY executed: {quantity} {symbol} @ ${price}")
+                self.logger.info(f"Position Size: ${position_size:.2f}")
                 self.logger.info(f"New Balance: ${self.demo_balance['ZUSD']:.2f}")
                 return {'status': 'success', 'trade': trade}
                 
-        # BUY LOGIC
-        elif signal['action'] == 'buy':
-            # Calculate position size based on current signal
-            position_size = self.calculate_position_size(symbol, signal)
-            if position_size <= 0:
-                return None
-                
-            quantity = position_size / price
+            return None
             
-            # Ensure minimum volume
-            if quantity < min_volume:
-                self.logger.warning(f"Calculated quantity {quantity} below minimum {min_volume}")
-                quantity = min_volume
-                position_size = quantity * price
-            
-            # Check if we have enough balance
-            if position_size > total_usd_balance:
-                self.logger.warning(f"Insufficient demo balance for trade. Need ${position_size:.2f}, have ${total_usd_balance:.2f}")
-                return None
-                
-            # Update balances
-            self.demo_balance['ZUSD'] -= position_size
-            self.demo_balance[symbol] = self.demo_balance.get(symbol, 0) + quantity
-            
-            # Record position
-            self.demo_positions[symbol] = {
-                'volume': quantity,
-                'entry_price': price,
-                'entry_time': datetime.now(),
-                'high_price': price
-            }
-            
-            # Record trade
-            trade = {
-                'timestamp': datetime.now(),
-                'symbol': symbol,
-                'type': 'buy',
-                'price': price,
-                'quantity': quantity,
-                'value': position_size,
-                'balance_after': self.demo_balance['ZUSD']
-            }
-            self.trade_history.append(trade)
-            
-            # Update portfolio history
-            self.portfolio_history.append({
-                'timestamp': datetime.now(),
-                'balance': self.demo_balance['ZUSD'],
-                'equity': self.calculate_total_equity()
-            })
-            
-            self.logger.info(f"Demo BUY executed: {quantity} {symbol} @ ${price}")
-            self.logger.info(f"Position Size: ${position_size:.2f}")
-            self.logger.info(f"New Balance: ${self.demo_balance['ZUSD']:.2f}")
-            return {'status': 'success', 'trade': trade}
-            
-        return None
-        
-    except Exception as e:
-        self.logger.error(f"Demo trade execution error: {str(e)}")
-        return None
+        except Exception as e:
+            self.logger.error(f"Demo trade execution error: {str(e)}")
+            return None
 
     def update_trade_history(self, symbol: str, action: str, quantity: float):
         """Update local tracking of positions based on executed trades"""
@@ -1525,119 +1520,119 @@ async def execute_trade_with_risk_management(self, symbol: str, signal: dict, pr
         except Exception as e:
             self.logger.error(f"Failed to sync positions: {str(e)}")
 
-async def monitor_positions(self):
-    """Monitor and manage demo positions with risk management"""
-    try:
-        current_time = datetime.now()
-        
-        # Iterate through all demo positions
-        positions_to_close = []  # Track positions that need to be closed
-        
-        for symbol, position in self.demo_positions.items():
-            current_price = self.get_latest_price(symbol)
-            if not current_price:
-                self.logger.warning(f"Could not get current price for {symbol}")
-                continue
+    async def monitor_positions(self):
+        """Monitor and manage demo positions with risk management"""
+        try:
+            current_time = datetime.now()
+            
+            # Iterate through all demo positions
+            positions_to_close = []  # Track positions that need to be closed
+            
+            for symbol, position in self.demo_positions.items():
+                current_price = self.get_latest_price(symbol)
+                if not current_price:
+                    self.logger.warning(f"Could not get current price for {symbol}")
+                    continue
+                    
+                entry_price = position['entry_price']
+                quantity = position['volume']
                 
-            entry_price = position['entry_price']
-            quantity = position['volume']
-            
-            # Calculate position metrics
-            position_value = quantity * current_price
-            unrealized_pnl = (current_price - entry_price) * quantity
-            pnl_percentage = ((current_price - entry_price) / entry_price) * 100
-            
-            # Update high price if we have a new high
-            if current_price > position['high_price']:
-                position['high_price'] = current_price
-            
-            # Log position status
-            self.logger.info(f"\nPosition Update - {symbol}:")
-            self.logger.info(f"Quantity: {quantity:.8f}")
-            self.logger.info(f"Entry: ${entry_price:.8f}")
-            self.logger.info(f"Current: ${current_price:.8f}")
-            self.logger.info(f"P&L: ${unrealized_pnl:.2f} ({pnl_percentage:.2f}%)")
-            
-            # Check take profit
-            if pnl_percentage >= self.take_profit_pct * 100:
-                self.logger.info(f"Take profit triggered for {symbol} at {pnl_percentage:.2f}%")
-                positions_to_close.append({
-                    'symbol': symbol,
-                    'reason': 'take_profit',
-                    'price': current_price
-                })
-                continue
-            
-            # Check stop loss
-            if pnl_percentage <= -self.stop_loss_pct * 100:
-                self.logger.info(f"Stop loss triggered for {symbol} at {pnl_percentage:.2f}%")
-                positions_to_close.append({
-                    'symbol': symbol,
-                    'reason': 'stop_loss',
-                    'price': current_price
-                })
-                continue
-            
-            # Check trailing stop
-            if pnl_percentage > 0:  # Only check trailing stop if we're in profit
-                highest_price = position['high_price']
-                trailing_stop_price = highest_price * (1 - self.trailing_stop_pct)
+                # Calculate position metrics
+                position_value = quantity * current_price
+                unrealized_pnl = (current_price - entry_price) * quantity
+                pnl_percentage = ((current_price - entry_price) / entry_price) * 100
                 
-                if current_price < trailing_stop_price:
-                    self.logger.info(f"Trailing stop triggered for {symbol} at ${current_price:.8f}")
+                # Update high price if we have a new high
+                if current_price > position['high_price']:
+                    position['high_price'] = current_price
+                
+                # Log position status
+                self.logger.info(f"\nPosition Update - {symbol}:")
+                self.logger.info(f"Quantity: {quantity:.8f}")
+                self.logger.info(f"Entry: ${entry_price:.8f}")
+                self.logger.info(f"Current: ${current_price:.8f}")
+                self.logger.info(f"P&L: ${unrealized_pnl:.2f} ({pnl_percentage:.2f}%)")
+                
+                # Check take profit
+                if pnl_percentage >= self.take_profit_pct * 100:
+                    self.logger.info(f"Take profit triggered for {symbol} at {pnl_percentage:.2f}%")
                     positions_to_close.append({
                         'symbol': symbol,
-                        'reason': 'trailing_stop',
+                        'reason': 'take_profit',
                         'price': current_price
                     })
                     continue
-            
-            # Check maximum drawdown
-            if pnl_percentage <= -self.max_drawdown * 100:
-                self.logger.info(f"Maximum drawdown triggered for {symbol} at {pnl_percentage:.2f}%")
-                positions_to_close.append({
-                    'symbol': symbol,
-                    'reason': 'max_drawdown',
-                    'price': current_price
-                })
-                continue
                 
-        # Close positions that triggered risk management rules
-        for close_order in positions_to_close:
-            symbol = close_order['symbol']
-            await self.execute_trade_with_risk_management(
-                symbol=symbol,
-                signal={'action': 'sell', 'confidence': 1.0},
-                price=close_order['price']
-            )
+                # Check stop loss
+                if pnl_percentage <= -self.stop_loss_pct * 100:
+                    self.logger.info(f"Stop loss triggered for {symbol} at {pnl_percentage:.2f}%")
+                    positions_to_close.append({
+                        'symbol': symbol,
+                        'reason': 'stop_loss',
+                        'price': current_price
+                    })
+                    continue
+                
+                # Check trailing stop
+                if pnl_percentage > 0:  # Only check trailing stop if we're in profit
+                    highest_price = position['high_price']
+                    trailing_stop_price = highest_price * (1 - self.trailing_stop_pct)
+                    
+                    if current_price < trailing_stop_price:
+                        self.logger.info(f"Trailing stop triggered for {symbol} at ${current_price:.8f}")
+                        positions_to_close.append({
+                            'symbol': symbol,
+                            'reason': 'trailing_stop',
+                            'price': current_price
+                        })
+                        continue
+                
+                # Check maximum drawdown
+                if pnl_percentage <= -self.max_drawdown * 100:
+                    self.logger.info(f"Maximum drawdown triggered for {symbol} at {pnl_percentage:.2f}%")
+                    positions_to_close.append({
+                        'symbol': symbol,
+                        'reason': 'max_drawdown',
+                        'price': current_price
+                    })
+                    continue
+                    
+            # Close positions that triggered risk management rules
+            for close_order in positions_to_close:
+                symbol = close_order['symbol']
+                await self.execute_trade_with_risk_management(
+                    symbol=symbol,
+                    signal={'action': 'sell', 'confidence': 1.0},
+                    price=close_order['price']
+                )
+                
+            # Update portfolio history
+            total_equity = self.calculate_total_equity()
+            self.portfolio_history.append({
+                'timestamp': current_time,
+                'balance': self.demo_balance['ZUSD'],
+                'equity': total_equity
+            })
             
-        # Update portfolio history
-        total_equity = self.calculate_total_equity()
-        self.portfolio_history.append({
-            'timestamp': current_time,
-            'balance': self.demo_balance['ZUSD'],
-            'equity': total_equity
-        })
-        
-    except Exception as e:
-        self.logger.error(f"Error monitoring positions: {str(e)}")
-        traceback.print_exc()
-
-async def initialize_position_tracking(self):
-    """Initialize demo position tracking"""
-    try:
-        # For demo bot, we start with no positions
-        self.demo_positions = {}
-        self.portfolio_history = [{
-            'timestamp': datetime.now(),
-            'balance': self.demo_balance['ZUSD'],
-            'equity': self.demo_balance['ZUSD']
-        }]
-        self.logger.info("Demo position tracking initialized")
-        return True
-    except Exception as e:
-        self.logger.error(f"Error initializing demo position tracking: {str(e)}")
-        return False
+        except Exception as e:
+            self.logger.error(f"Error monitoring positions: {str(e)}")
+            traceback.print_exc()
+    
+    async def initialize_position_tracking(self):
+        """Initialize demo position tracking"""
+        try:
+            # For demo bot, we start with no positions
+            self.demo_positions = {}
+            self.portfolio_history = [{
+                'timestamp': datetime.now(),
+                'balance': self.demo_balance['ZUSD'],
+                'equity': self.demo_balance['ZUSD']
+            }]
+            self.logger.info("Demo position tracking initialized")
+            return True
+        except Exception as e:
+            self.logger.error(f"Error initializing demo position tracking: {str(e)}")
+            return False
 
     def setup_database(self):
         """Set up SQLite database for storing trading data"""
@@ -2255,261 +2250,279 @@ async def initialize_position_tracking(self):
             self.logger.error(f"Error monitoring positions: {str(e)}")
             self.position_tracker.positions = {}  # Reset on error
 
-def save_demo_state(self):
-    """Save demo bot state to database"""
-    try:
-        conn = sqlite3.connect(self.db_name)
-        c = conn.cursor()
-
-        # Create tables if they don't exist
-        c.execute('''CREATE TABLE IF NOT EXISTS demo_balance
-                    (currency TEXT PRIMARY KEY, amount REAL)''')
-                    
-        c.execute('''CREATE TABLE IF NOT EXISTS demo_positions
-                    (symbol TEXT PRIMARY KEY, volume REAL, entry_price REAL, 
-                    entry_time TEXT, high_price REAL)''')
-                    
-        c.execute('''CREATE TABLE IF NOT EXISTS demo_trade_history
-                    (timestamp TEXT, symbol TEXT, type TEXT, price REAL,
-                    quantity REAL, value REAL, balance_after REAL)''')
-                    
-        c.execute('''CREATE TABLE IF NOT EXISTS demo_portfolio_history
-                    (timestamp TEXT, balance REAL, equity REAL)''')
-
-        # Save current balance
-        c.execute('DELETE FROM demo_balance')  # Clear existing
-        for currency, amount in self.demo_balance.items():
-            c.execute('INSERT INTO demo_balance VALUES (?, ?)',
-                     (currency, amount))
-
-        # Save positions
-        c.execute('DELETE FROM demo_positions')  # Clear existing
-        for symbol, pos in self.demo_positions.items():
-            c.execute('INSERT INTO demo_positions VALUES (?, ?, ?, ?, ?)',
-                     (symbol, pos['volume'], pos['entry_price'],
-                      pos['entry_time'].isoformat(), pos['high_price']))
-
-        # Save trade history
-        c.execute('DELETE FROM demo_trade_history')  # Clear existing
-        for trade in self.trade_history:
-            c.execute('''INSERT INTO demo_trade_history 
-                        VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                     (trade['timestamp'].isoformat(), trade['symbol'],
-                      trade['type'], trade['price'], trade['quantity'],
-                      trade['value'], trade['balance_after']))
-
-        # Save portfolio history
-        c.execute('DELETE FROM demo_portfolio_history')  # Clear existing
-        for entry in self.portfolio_history:
-            c.execute('INSERT INTO demo_portfolio_history VALUES (?, ?, ?)',
-                     (entry['timestamp'].isoformat(), entry['balance'],
-                      entry['equity']))
-
-        conn.commit()
-        conn.close()
-        self.logger.info("Demo state saved successfully")
-        return True
-
-    except Exception as e:
-        self.logger.error(f"Error saving demo state: {str(e)}")
-        traceback.print_exc()
-        return False
-
-def load_demo_state(self):
-    """Load demo bot state from database"""
-    try:
-        conn = sqlite3.connect(self.db_name)
-        c = conn.cursor()
-
-        # Load balance
-        c.execute('SELECT * FROM demo_balance')
-        balance_data = c.fetchall()
-        if balance_data:
-            self.demo_balance = {row[0]: row[1] for row in balance_data}
-        else:
-            # Use default starting balance if no saved state
-            self.demo_balance = {'ZUSD': 100000.0}
-
-        # Load positions
-        c.execute('SELECT * FROM demo_positions')
-        position_data = c.fetchall()
-        self.demo_positions = {}
-        for row in position_data:
-            self.demo_positions[row[0]] = {
-                'volume': row[1],
-                'entry_price': row[2],
-                'entry_time': datetime.fromisoformat(row[3]),
-                'high_price': row[4]
-            }
-
-        # Load trade history
-        c.execute('SELECT * FROM demo_trade_history')
-        trade_data = c.fetchall()
-        self.trade_history = []
-        for row in trade_data:
-            self.trade_history.append({
-                'timestamp': datetime.fromisoformat(row[0]),
-                'symbol': row[1],
-                'type': row[2],
-                'price': row[3],
-                'quantity': row[4],
-                'value': row[5],
-                'balance_after': row[6]
-            })
-
-        # Load portfolio history
-        c.execute('SELECT * FROM demo_portfolio_history')
-        portfolio_data = c.fetchall()
-        self.portfolio_history = []
-        for row in portfolio_data:
-            self.portfolio_history.append({
-                'timestamp': datetime.fromisoformat(row[0]),
-                'balance': row[1],
-                'equity': row[2]
-            })
-
-        conn.close()
-        self.logger.info("Demo state loaded successfully")
-        
-        # Log current state
-        self.logger.info("\n=== Loaded Demo State ===")
-        self.logger.info(f"USD Balance: ${self.demo_balance['ZUSD']:.2f}")
-        self.logger.info(f"Active Positions: {len(self.demo_positions)}")
-        self.logger.info(f"Trade History: {len(self.trade_history)} trades")
-        self.logger.info(f"Portfolio History: {len(self.portfolio_history)} entries")
-        return True
-
-    except Exception as e:
-        self.logger.error(f"Error loading demo state: {str(e)}")
-        traceback.print_exc()
-        # Use default values if load fails
-        self.demo_balance = {'ZUSD': 100000.0}
-        self.demo_positions = {}
-        self.trade_history = []
-        self.portfolio_history = [{
-            'timestamp': datetime.now(),
-            'balance': 100000.0,
-            'equity': 100000.0
-        }]
-        return False
-
-async def run(self):
-    """Main run loop for demo trading bot"""
-    self.logger.info("\n=== DEMO KRAKEN TRADING BOT STARTED ===")
-    self.logger.info(f"Starting Balance: ${self.demo_balance['ZUSD']:.2f}")
-    
-    # Force initial training
-    if not self.training_completed:
-        self.logger.info("Performing initial model training...")
-        training_success = await self.perform_initial_training()
-        if not training_success:
-            self.logger.error("Initial training failed!")
-            return
-        else:
-            self.logger.info("Initial training completed successfully!")
-
-    # Initialize position tracking
-    await self.initialize_position_tracking()
-
-    while self.running:
+    def init_db(self):
+        """Initialize database tables"""
         try:
-            current_time = datetime.now()
-            
-            # Update and log portfolio metrics
-            metrics = self.get_portfolio_metrics()
-            self.logger.info("\n=== Portfolio Status ===")
-            self.logger.info(f"Current Equity: ${metrics['current_equity']:.2f}")
-            self.logger.info(f"P&L: ${metrics['total_pnl']:.2f} ({metrics['pnl_percentage']:.2f}%)")
-            # Save state every cycle
-            self.save_demo_state()
-            
-            
-            # First monitor existing positions
-            await self.monitor_positions()
-            
-            # Process each trading pair
-            for symbol in self.symbols:
-                try:
-                    self.logger.info(f"\n--- Analyzing {symbol} ---")
-                    
-                    # Get historical data
-                    df = await self.get_historical_data(symbol)
-                    
-                    if df is not None and not df.empty:
-                        # Calculate indicators
-                        df = self.calculate_indicators(df)
+            conn = sqlite3.connect(self.db_name)
+            c = conn.cursor()
+    
+            # Create all required tables
+            c.execute('''CREATE TABLE IF NOT EXISTS demo_balance
+                        (currency TEXT PRIMARY KEY, amount REAL)''')
                         
-                        # Generate trading signals
-                        signal = self.generate_enhanced_signals(df, symbol)
+            c.execute('''CREATE TABLE IF NOT EXISTS demo_positions
+                        (symbol TEXT PRIMARY KEY, volume REAL, entry_price REAL, 
+                        entry_time TEXT, high_price REAL)''')
                         
-                        current_price = df['close'].iloc[-1]
-                        self.logger.info(f"Current Price: ${self.format_price_for_log(symbol, current_price)}")
-                        self.logger.info(f"Signal: {signal['action'].upper()} (Confidence: {signal['confidence']:.3f})")
+            c.execute('''CREATE TABLE IF NOT EXISTS demo_trade_history
+                        (timestamp TEXT, symbol TEXT, type TEXT, price REAL,
+                        quantity REAL, value REAL, balance_after REAL)''')
                         
-                        # Check if we should take action
-                        if signal['action'] != 'hold':
-                            # Check market conditions
-                            if self.check_market_conditions(symbol, df):
-                                # Calculate potential position size
-                                position_size = self.calculate_position_size(symbol, signal)
-                                
-                                if position_size >= self.min_position_value:
-                                    self.logger.info(f"Executing {signal['action']} signal for {symbol}")
-                                    self.logger.info(f"Position Size: ${position_size:.2f}")
-                                    
-                                    # Execute trade
-                                    trade_result = await self.execute_trade_with_risk_management(
-                                        symbol, signal, current_price
-                                    )
-                                    
-                                    if trade_result:
-                                        self.logger.info(f"Trade executed successfully for {symbol}")
-                                    else:
-                                        self.logger.warning(f"Trade execution failed for {symbol}")
-                                else:
-                                    self.logger.info(f"Position size ${position_size:.2f} below minimum ${self.min_position_value}")
-                            else:
-                                self.logger.info(f"Market conditions not suitable for {symbol}")
-                        else:
-                            self.logger.info(f"No action needed for {symbol}")
-                            
-                except Exception as e:
-                    self.logger.error(f"Error processing {symbol}: {str(e)}")
-                    continue
-                
-                # Add delay between symbols to avoid rate limiting
-                await asyncio.sleep(1)
+            c.execute('''CREATE TABLE IF NOT EXISTS demo_portfolio_history
+                        (timestamp TEXT, balance REAL, equity REAL)''')
+    
+            # Initialize demo balance if table is empty
+            c.execute('SELECT COUNT(*) FROM demo_balance')
+            if c.fetchone()[0] == 0:
+                c.execute('INSERT INTO demo_balance VALUES (?, ?)',
+                         ('ZUSD', self.demo_balance['ZUSD']))
+    
+            conn.commit()
+            conn.close()
+            self.logger.info("Database initialized successfully")
             
-            # Store current state
-            total_equity = self.calculate_total_equity()
-            self.portfolio_history.append({
-                'timestamp': current_time,
-                'balance': self.demo_balance['ZUSD'],
-                'equity': total_equity
-            })
-            
-            # Log overall portfolio status
-            self.logger.info("\n=== End of Cycle ===")
-            self.logger.info(f"Total Equity: ${total_equity:.2f}")
-            self.logger.info(f"USD Balance: ${self.demo_balance['ZUSD']:.2f}")
-            for symbol, pos in self.demo_positions.items():
-                self.logger.info(f"{symbol} Position: {pos['volume']:.8f}")
-            
-            # Sleep for main loop interval
-            self.logger.info("\nWaiting for next cycle...")
-            await asyncio.sleep(150)  # 2.5 minute cycle
-                
         except Exception as e:
-            self.logger.error(f"Error in main loop: {str(e)}")
+            self.logger.error(f"Error initializing database: {str(e)}")
+    
+    def load_demo_state(self) -> None:
+        """Load demo bot state from database"""
+        try:
+            conn = sqlite3.connect(self.db_name)
+            c = conn.cursor()
+    
+            # Create tables if they don't exist
+            c.execute('''CREATE TABLE IF NOT EXISTS demo_balance
+                        (currency TEXT PRIMARY KEY, amount REAL)''')
+                        
+            c.execute('''CREATE TABLE IF NOT EXISTS demo_positions
+                        (symbol TEXT PRIMARY KEY, volume REAL, entry_price REAL, 
+                        entry_time TEXT, high_price REAL)''')
+                        
+            c.execute('''CREATE TABLE IF NOT EXISTS demo_trade_history
+                        (timestamp TEXT, symbol TEXT, type TEXT, price REAL,
+                        quantity REAL, value REAL, balance_after REAL)''')
+                        
+            c.execute('''CREATE TABLE IF NOT EXISTS demo_portfolio_history
+                        (timestamp TEXT, balance REAL, equity REAL)''')
+    
+            # Load balance data
+            c.execute('SELECT * FROM demo_balance')
+            balance_data = c.fetchall()
+            if balance_data:
+                self.demo_balance = {row[0]: row[1] for row in balance_data}
+    
+            # Load positions
+            c.execute('SELECT * FROM demo_positions')
+            position_data = c.fetchall()
+            if position_data:
+                self.demo_positions = {}
+                for row in position_data:
+                    self.demo_positions[row[0]] = {
+                        'volume': row[1],
+                        'entry_price': row[2],
+                        'entry_time': datetime.fromisoformat(row[3]),
+                        'high_price': row[4]
+                    }
+    
+            # Load trade history
+            c.execute('SELECT * FROM demo_trade_history')
+            trade_data = c.fetchall()
+            if trade_data:
+                self.trade_history = []
+                for row in trade_data:
+                    self.trade_history.append({
+                        'timestamp': datetime.fromisoformat(row[0]),
+                        'symbol': row[1],
+                        'type': row[2],
+                        'price': row[3],
+                        'quantity': row[4],
+                        'value': row[5],
+                        'balance_after': row[6]
+                    })
+    
+            # Load portfolio history
+            c.execute('SELECT * FROM demo_portfolio_history ORDER BY timestamp DESC LIMIT 100')
+            portfolio_data = c.fetchall()
+            if portfolio_data:
+                self.portfolio_history = []
+                for row in portfolio_data:
+                    self.portfolio_history.append({
+                        'timestamp': datetime.fromisoformat(row[0]),
+                        'balance': row[1],
+                        'equity': row[2]
+                    })
+    
+            conn.close()
+            self.logger.info("Demo state loaded successfully")
+            
+            # Log current state
+            self.logger.info("\n=== Loaded Demo State ===")
+            self.logger.info(f"USD Balance: ${self.demo_balance['ZUSD']:.2f}")
+            self.logger.info(f"Active Positions: {len(self.demo_positions)}")
+            self.logger.info(f"Trade History: {len(self.trade_history)} trades")
+            self.logger.info(f"Portfolio History: {len(self.portfolio_history)} entries")
+    
+        except Exception as e:
+            self.logger.error(f"Error loading demo state: {str(e)}")
+    
+    def save_demo_state(self):
+        """Save current demo state to database"""
+        try:
+            conn = sqlite3.connect(self.db_name)
+            c = conn.cursor()
+    
+            # Save current balance
+            c.execute('DELETE FROM demo_balance')
+            for currency, amount in self.demo_balance.items():
+                c.execute('INSERT INTO demo_balance VALUES (?, ?)',
+                         (currency, amount))
+    
+            # Save positions
+            c.execute('DELETE FROM demo_positions')
+            for symbol, pos in self.demo_positions.items():
+                c.execute('INSERT INTO demo_positions VALUES (?, ?, ?, ?, ?)',
+                         (symbol, pos['volume'], pos['entry_price'],
+                          pos['entry_time'].isoformat(), pos['high_price']))
+    
+            # Save trade history
+            c.execute('DELETE FROM demo_trade_history')
+            for trade in self.trade_history:
+                c.execute('''INSERT INTO demo_trade_history 
+                            VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                         (trade['timestamp'].isoformat(), trade['symbol'],
+                          trade['type'], trade['price'], trade['quantity'],
+                          trade['value'], trade['balance_after']))
+    
+            # Save portfolio history
+            c.execute('DELETE FROM demo_portfolio_history')
+            for entry in self.portfolio_history:
+                c.execute('INSERT INTO demo_portfolio_history VALUES (?, ?, ?)',
+                         (entry['timestamp'].isoformat(), entry['balance'],
+                          entry['equity']))
+    
+            conn.commit()
+            conn.close()
+            self.logger.info("Demo state saved successfully")
+    
+        except Exception as e:
+            self.logger.error(f"Error saving demo state: {str(e)}")
+
+    async def run(self):
+        """Main run loop for demo trading bot"""
+        try:
+            self.logger.info("\n=== DEMO KRAKEN TRADING BOT STARTED ===")
+            self.logger.info(f"Starting Balance: ${self.demo_balance['ZUSD']:.2f}")
+            
+            # Force initial training if not completed
+            if not self.training_completed:
+                self.logger.info("Performing initial model training...")
+                training_success = await self.perform_initial_training()
+                if not training_success:
+                    self.logger.error("Initial training failed!")
+                    return
+                self.logger.info("Initial training completed successfully!")
+        
+            # Initialize position tracking
+            await self.initialize_position_tracking()
+        
+            while self.running:
+                try:
+                    current_time = datetime.now()
+                    
+                    # Update and log portfolio metrics
+                    metrics = self.get_portfolio_metrics()
+                    self.logger.info("\n=== Portfolio Status ===")
+                    self.logger.info(f"Current Equity: ${metrics['current_equity']:.2f}")
+                    self.logger.info(f"P&L: ${metrics['total_pnl']:.2f} ({metrics['pnl_percentage']:.2f}%)")
+                    
+                    # Save state every cycle
+                    self.save_demo_state()
+                    
+                    # Monitor existing positions
+                    await self.monitor_positions()
+                    
+                    # Process each trading pair
+                    for symbol in self.symbols:
+                        try:
+                            self.logger.info(f"\n--- Analyzing {symbol} ---")
+                            
+                            # Get historical data
+                            df = await self.get_historical_data(symbol)
+                            
+                            if df is not None and not df.empty:
+                                # Calculate indicators
+                                df = self.calculate_indicators(df)
+                                
+                                # Generate trading signals
+                                signal = self.generate_enhanced_signals(df, symbol)
+                                
+                                current_price = df['close'].iloc[-1]
+                                self.logger.info(f"Current Price: ${self.format_price_for_log(symbol, current_price)}")
+                                self.logger.info(f"Signal: {signal['action'].upper()} (Confidence: {signal['confidence']:.3f})")
+                                
+                                # Check if we should take action
+                                if signal['action'] != 'hold':
+                                    if self.check_market_conditions(symbol, df):
+                                        position_size = self.calculate_position_size(symbol, signal)
+                                        
+                                        if position_size >= self.min_position_value:
+                                            self.logger.info(f"Executing {signal['action']} signal for {symbol}")
+                                            self.logger.info(f"Position Size: ${position_size:.2f}")
+                                            
+                                            # Execute trade
+                                            trade_result = await self.execute_trade_with_risk_management(
+                                                symbol, signal, current_price
+                                            )
+                                            
+                                            if trade_result:
+                                                self.logger.info(f"Trade executed successfully for {symbol}")
+                                            else:
+                                                self.logger.warning(f"Trade execution failed for {symbol}")
+                                        else:
+                                            self.logger.info(f"Position size ${position_size:.2f} below minimum ${self.min_position_value}")
+                                    else:
+                                        self.logger.info(f"Market conditions not suitable for {symbol}")
+                                else:
+                                    self.logger.info(f"No action needed for {symbol}")
+                                    
+                        except Exception as e:
+                            self.logger.error(f"Error processing {symbol}: {str(e)}")
+                            continue
+                        
+                        # Add delay between symbols to avoid rate limiting
+                        await asyncio.sleep(1)
+                    
+                    # Store current state
+                    total_equity = self.calculate_total_equity()
+                    self.portfolio_history.append({
+                        'timestamp': current_time,
+                        'balance': self.demo_balance['ZUSD'],
+                        'equity': total_equity
+                    })
+                    
+                    # Log overall portfolio status
+                    self.logger.info("\n=== End of Cycle ===")
+                    self.logger.info(f"Total Equity: ${total_equity:.2f}")
+                    self.logger.info(f"USD Balance: ${self.demo_balance['ZUSD']:.2f}")
+                    for symbol, pos in self.demo_positions.items():
+                        self.logger.info(f"{symbol} Position: {pos['volume']:.8f}")
+                    
+                    # Sleep for main loop interval
+                    self.logger.info("\nWaiting for next cycle...")
+                    await asyncio.sleep(150)  # 2.5 minute cycle
+                        
+                except Exception as e:
+                    self.logger.error(f"Error in main loop: {str(e)}")
+                    traceback.print_exc()
+                    await asyncio.sleep(5)  # Short sleep on error before retrying
+                    
+        except Exception as e:
+            self.logger.error(f"Fatal error in bot run loop: {str(e)}")
             traceback.print_exc()
-            await asyncio.sleep(5)  # Short sleep on error before retrying
 
 async def main():
     # Initialize and run the bot
-    api_key = "P6J5R5pPLXjRGiqgL/4j9ZNGN4bormuJEDTnvsT/NTk/uzQITcsLFiFa"
-    secret_key = "FqCqZqTC+HWQ2b24BCWb24hnLieqDunV+4QgGR1098SrOEgXqRd6Yq/3Ih8bU9aussbBRBbhMQeVSUroFRX+PA=="
-    
-    bot = DemoKrakenBot(api_key, secret_key)
+    bot = DemoKrakenBot()
     
     try:
         await bot.run()
