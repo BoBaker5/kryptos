@@ -66,7 +66,7 @@ async def startup_event():
     global demo_bot
     try:
         logger.info("Starting demo bot...")
-        demo_bot = DemoKrakenBot()
+        demo_bot = DemoKrakenBot()  # Remove api_key and secret_key
         demo_bot.running = True
         
         # Start bot manager
