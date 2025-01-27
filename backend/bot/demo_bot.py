@@ -599,10 +599,14 @@ class DemoKrakenBot:
             # Initialize database
             self.init_db()
             
-            # Initialize Kraken API
+            # Initialize API and rate limiting
             self.kraken = krakenex.API()
             self.k = KrakenAPI(self.kraken, retry=0.5)
             self.running = True
+            self.last_api_call = time.time()
+            self.api_retry_delay = 1.0
+            self.max_retry_delay = 60
+            self.timeframe = 5  # 5-minute intervals
     
             # Initialize MLModelManager and AI components
             self.model_manager = MLModelManager()
@@ -624,10 +628,17 @@ class DemoKrakenBot:
                 'equity': 100000.0
             }]
     
+            # Market conditions
+            self.market_conditions = {
+                'high_volatility': 0.05,
+                'low_liquidity': 1000,
+                'excessive_spread': 0.03
+            }
+    
             # Load saved state
             self.load_demo_state()
     
-            # Rest of your initialization code remains the same...
+            # Trading parameters
             self.symbols = {
                 "SOLUSD": 0.20,
                 "AVAXUSD": 0.20,
@@ -637,20 +648,39 @@ class DemoKrakenBot:
                 "PEPEUSD": 0.15
             }
     
-            # Trading parameters
+            # Risk parameters
             self.max_drawdown = 0.10
             self.trailing_stop_pct = 0.03
             self.max_trades_per_hour = 3
             self.trade_cooldown = 300
             self.last_trade_time = {}
             self.performance_metrics = {}
+            self.max_position_size = 0.3
+            self.min_position_value = 2.0
+            self.max_total_risk = 0.15
+            self.stop_loss_pct = 0.03
+            self.take_profit_pct = 0.05
+            self.min_zusd_balance = 5.0
+    
+            # Technical parameters
+            self.sma_short = 20
+            self.sma_long = 50
+            self.rsi_period = 14
+            self.rsi_oversold = 35
+            self.rsi_overbought = 65
+            self.macd_fast = 12
+            self.macd_slow = 26
+            self.macd_signal = 9
+            self.volatility_window = 20
+            self.volume_ma_window = 20
+            self.prediction_threshold = 0.2
     
             self.logger.info("Demo bot initialization completed successfully")
     
         except Exception as e:
             self.logger.error(f"Initialization error: {str(e)}")
             raise
-
+        
     def get_demo_balance(self):
         """Get current demo account balance"""
         try:
