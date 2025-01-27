@@ -591,35 +591,36 @@ class DemoKrakenBot:
         # Initialize logging first
         self.logger = self._setup_logging()
         self.db_name = 'crypto_trading.db'
-    
+        
         try:
-            # Initialize position tracker
-            self.position_tracker = PositionTracker()
-            
-            # Initialize database
-            self.init_db()
-            
             # Initialize API and rate limiting
-            self.kraken = krakenex.API()
-            self.k = KrakenAPI(self.kraken, retry=0.5)
-            self.running = True
+            self.timeframe = 5  # 5-minute intervals
             self.last_api_call = time.time()
             self.api_retry_delay = 1.0
             self.max_retry_delay = 60
-            self.timeframe = 5  # 5-minute intervals
-    
-            # Initialize MLModelManager and AI components
+            
+            # Initialize Kraken API
+            self.kraken = krakenex.API()
+            self.k = KrakenAPI(self.kraken, retry=0.5)
+            self.running = True
+            
+            # Initialize tracking components
+            self.position_tracker = PositionTracker()
+            self.init_db()
+            
+            # Initialize ML and AI components
             self.model_manager = MLModelManager()
             self.ai_enhancer = AITradingEnhancer()
             
+            # Training state
             self.is_initially_trained = False
             self.training_completed = False
             self.min_training_data = 100
             self.initial_training_hours = 1
             self.start_time = datetime.now()
-    
-            # Initialize demo account state
-            self.demo_balance = {'ZUSD': 100000.0}  # Starting balance
+            
+            # Account state
+            self.demo_balance = {'ZUSD': 100000.0}
             self.demo_positions = {}
             self.trade_history = []
             self.portfolio_history = [{
@@ -627,18 +628,8 @@ class DemoKrakenBot:
                 'balance': 100000.0,
                 'equity': 100000.0
             }]
-    
-            # Market conditions
-            self.market_conditions = {
-                'high_volatility': 0.05,
-                'low_liquidity': 1000,
-                'excessive_spread': 0.03
-            }
-    
-            # Load saved state
-            self.load_demo_state()
-    
-            # Trading parameters
+            
+            # Trading pairs and allocations
             self.symbols = {
                 "SOLUSD": 0.20,
                 "AVAXUSD": 0.20,
@@ -647,21 +638,20 @@ class DemoKrakenBot:
                 "SHIBUSD": 0.10,
                 "PEPEUSD": 0.15
             }
-    
+            
             # Risk parameters
             self.max_drawdown = 0.10
             self.trailing_stop_pct = 0.03
             self.max_trades_per_hour = 3
             self.trade_cooldown = 300
             self.last_trade_time = {}
-            self.performance_metrics = {}
             self.max_position_size = 0.3
             self.min_position_value = 2.0
             self.max_total_risk = 0.15
             self.stop_loss_pct = 0.03
             self.take_profit_pct = 0.05
             self.min_zusd_balance = 5.0
-    
+            
             # Technical parameters
             self.sma_short = 20
             self.sma_long = 50
@@ -674,9 +664,22 @@ class DemoKrakenBot:
             self.volatility_window = 20
             self.volume_ma_window = 20
             self.prediction_threshold = 0.2
-    
+            
+            # Market conditions
+            self.market_conditions = {
+                'high_volatility': 0.05,
+                'low_liquidity': 1000,
+                'excessive_spread': 0.03
+            }
+            
+            # Performance tracking
+            self.performance_metrics = {}
+            
+            # Load saved state
+            self.load_demo_state()
+            
             self.logger.info("Demo bot initialization completed successfully")
-    
+            
         except Exception as e:
             self.logger.error(f"Initialization error: {str(e)}")
             raise
