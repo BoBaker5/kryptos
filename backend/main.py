@@ -95,8 +95,13 @@ async def get_demo_status():
     """Get status of the demo bot"""
     try:
         if demo_bot and demo_bot.running:
-            metrics = demo_bot.get_portfolio_metrics()
-            positions = demo_bot.get_demo_positions()
+            metrics = demo_bot.get_portfolio_metrics() if hasattr(demo_bot, 'get_portfolio_metrics') else {
+                'current_equity': 100000.0,
+                'pnl': 0,
+                'pnl_percentage': 0
+            }
+            
+            positions = demo_bot.get_demo_positions() if hasattr(demo_bot, 'get_demo_positions') else []
             
             return {
                 "status": "success",
@@ -104,16 +109,16 @@ async def get_demo_status():
                 "data": {
                     "status": "running",
                     "positions": positions,
-                    "balance": demo_bot.demo_balance,
+                    "balance": getattr(demo_bot, 'demo_balance', {"ZUSD": 100000.0}),
                     "metrics": metrics,
-                    "trades": demo_bot.trade_history[-10:] if demo_bot.trade_history else [],
-                    "performanceHistory": demo_bot.portfolio_history[-100:] if demo_bot.portfolio_history else []
+                    "trades": getattr(demo_bot, 'trade_history', [])[-10:],
+                    "performanceHistory": getattr(demo_bot, 'portfolio_history', [])[-100:]
                 }
             }
         else:
             return {
                 "status": "success",
-                "message": "Demo bot is initialized but not running",
+                "message": "Demo bot is not running",
                 "data": {
                     "status": "stopped",
                     "positions": [],
@@ -136,8 +141,12 @@ async def get_demo_status():
             "data": {
                 "status": "error",
                 "positions": [],
-                "balance": {},
-                "metrics": {},
+                "balance": {"ZUSD": 100000.0},
+                "metrics": {
+                    "current_equity": 100000.0,
+                    "pnl": 0,
+                    "pnl_percentage": 0
+                },
                 "trades": [],
                 "performanceHistory": []
             }
