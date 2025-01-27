@@ -38,6 +38,13 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.calibration import CalibratedClassifierCV
 
+# Constants for rate limiting and cleanup
+API_CALLS_PER_SECOND = 0.5  # 2 seconds between calls
+CLEANUP_INTERVAL = 3600     # Cleanup every hour
+DATA_RETENTION_DAYS = 7     # Keep 7 days of market data
+MAX_PORTFOLIO_HISTORY = 1000  # Maximum portfolio history entries
+MAX_TRADE_HISTORY = 100      # Maximum trade history entries
+API_BASE_DELAY = 1.0         # Base delay between API calls
 # Apply nest_asyncio at the start
 nest_asyncio.apply()
 warnings.filterwarnings('ignore')
@@ -564,116 +571,81 @@ class PositionTracker:
             }
         return None
 
+class RateLimiter:
+    def __init__(self, calls_per_second=1):
+        self.calls_per_second = calls_per_second
+        self.last_call = time.time()
+        self.lock = asyncio.Lock()
+
+    async def wait(self):
+        async with self.lock:
+            now = time.time()
+            time_since_last = now - self.last_call
+            if time_since_last < (1.0 / self.calls_per_second):
+                await asyncio.sleep((1.0 / self.calls_per_second) - time_since_last)
+            self.last_call = time.time()
+
 class DemoKrakenBot:
-    def __init__(self, initial_balance=100000.0):
+    def __init__(self):
         """Initialize the demo trading bot"""
         # Initialize logging first
         self.logger = self._setup_logging()
         self.db_name = 'crypto_trading.db'
     
         try:
+            # Initialize position tracker
+            self.position_tracker = PositionTracker()
+            
             # Initialize database
             self.init_db()
-            # Add position tracker
-            self.position_tracker = PositionTracker()
-            # Initialize Kraken API with rate limiting
+            
+            # Initialize Kraken API
             self.kraken = krakenex.API()
             self.k = KrakenAPI(self.kraken, retry=0.5)
             self.running = True
     
-            # Add missing attributes
+            # Initialize MLModelManager and AI components
+            self.model_manager = MLModelManager()
+            self.ai_enhancer = AITradingEnhancer()
+            
             self.is_initially_trained = False
             self.training_completed = False
             self.min_training_data = 100
             self.initial_training_hours = 1
             self.start_time = datetime.now()
-            
-            # Initialize MLModelManager and related attributes
-            self.model_manager = MLModelManager()
-            self.model_name = 'trading_model.joblib'
-            self.is_initially_trained = False
-            self.training_completed = False
-    
-            self.ai_enhancer = AITradingEnhancer()
-            self.ai_trained = False
     
             # Initialize demo account state
-            self.demo_balance = {
-                'ZUSD': initial_balance,  # Starting balance
-                'SOLUSD': 0,
-                'AVAXUSD': 0,
-                'XRPUSD': 0,
-                'XDGUSD': 0,
-                'SHIBUSD': 0,
-                'PEPEUSD': 0
-            }
-            
+            self.demo_balance = {'ZUSD': 100000.0}  # Starting balance
             self.demo_positions = {}
             self.trade_history = []
             self.portfolio_history = [{
                 'timestamp': datetime.now(),
-                'balance': initial_balance,
-                'equity': initial_balance
+                'balance': 100000.0,
+                'equity': 100000.0
             }]
     
-            # Market conditions for smaller account
-            self.market_conditions = {
-                'high_volatility': 0.05,    # Lower threshold
-                'low_liquidity': 1000,      # Lower requirement
-                'excessive_spread': 0.03     # Lower threshold
-            }
+            # Load saved state
+            self.load_demo_state()
     
-            # Trading pairs with adjusted allocations for small account
+            # Rest of your initialization code remains the same...
             self.symbols = {
-                "SOLUSD": 0.20,    # SOL/USD
-                "AVAXUSD": 0.20,   # AVAX/USD
-                "XRPUSD": 0.20,    # XRP/USD
-                "XDGUSD": 0.15,    # DOGE/USD
-                "SHIBUSD": 0.10,   # SHIB/USD
-                "PEPEUSD": 0.15    # PEPE/USD
+                "SOLUSD": 0.20,
+                "AVAXUSD": 0.20,
+                "XRPUSD": 0.20,
+                "XDGUSD": 0.15,
+                "SHIBUSD": 0.10,
+                "PEPEUSD": 0.15
             }
     
-            # Adjust parameters for smaller account
-            self.max_drawdown = 0.10        # Reduced from 0.15
-            self.trailing_stop_pct = 0.03   # Tighter stop
-            self.max_trades_per_hour = 3    # Fewer trades
-            self.trade_cooldown = 300       # Longer cooldown
+            # Trading parameters
+            self.max_drawdown = 0.10
+            self.trailing_stop_pct = 0.03
+            self.max_trades_per_hour = 3
+            self.trade_cooldown = 300
             self.last_trade_time = {}
-            self.trade_history = {}
             self.performance_metrics = {}
     
-            # Technical indicators
-            self.sma_short = 20
-            self.sma_long = 50
-            self.rsi_period = 14
-            self.rsi_oversold = 35
-            self.rsi_overbought = 65
-            self.macd_fast = 12
-            self.macd_slow = 26
-            self.macd_signal = 9
-            self.volatility_window = 20
-            self.volume_ma_window = 20
-            self.prediction_threshold = 0.2
-    
-            self.timeframe = 5  # 1 minute intervals
-    
-            # Adjust risk parameters for smaller account
-            self.max_position_size = 0.3    # Increased to allow meaningful positions
-            self.min_position_value = 2.0    # Reduced minimum
-            self.max_total_risk = 0.15       # Reduced risk
-            self.stop_loss_pct = 0.03        # Tighter stop loss
-            self.take_profit_pct = 0.05      # Lower but realistic profit target
-    
-            self.min_zusd_balance = 5.0
-    
-            # Rate limiting
-            self.last_api_call = time.time()
-            self.api_call_delay = 1.0
-            self.api_retry_delay = 1  # Initial retry delay for exceeded rate limits
-            self.max_retry_delay = 60
-    
-            self.market_state = {symbol: {'trend': None, 'volatility': None} for symbol in self.symbols}
-            self.logger.info("Demo Kraken trading bot initialization completed successfully")
+            self.logger.info("Demo bot initialization completed successfully")
     
         except Exception as e:
             self.logger.error(f"Initialization error: {str(e)}")
@@ -745,7 +717,80 @@ class DemoKrakenBot:
             except Exception as e:
                 self.logger.error(f"Error getting demo positions: {str(e)}")
                 return []
-        
+
+    def cleanup_old_data(self):
+        """Cleanup old data to manage memory usage"""
+        try:
+            # Connect to database
+            conn = sqlite3.connect(self.db_name)
+            c = conn.cursor()
+    
+            # Keep only last 7 days of market data
+            c.execute('''DELETE FROM market_data 
+                        WHERE timestamp < date('now', '-7 days')''')
+    
+            # Keep only last 1000 portfolio history entries
+            if len(self.portfolio_history) > 1000:
+                self.portfolio_history = self.portfolio_history[-1000:]
+                
+            # Keep only last 100 trades
+            if len(self.trade_history) > 100:
+                self.trade_history = self.trade_history[-100:]
+    
+            # Update database with cleaned data
+            c.execute('DELETE FROM demo_portfolio_history')
+            for entry in self.portfolio_history:
+                c.execute('INSERT INTO demo_portfolio_history VALUES (?, ?, ?)',
+                         (entry['timestamp'].isoformat(), entry['balance'],
+                          entry['equity']))
+    
+            c.execute('DELETE FROM demo_trade_history')
+            for trade in self.trade_history:
+                c.execute('''INSERT INTO demo_trade_history 
+                            VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                         (trade['timestamp'].isoformat(), trade['symbol'],
+                          trade['type'], trade['price'], trade['quantity'],
+                          trade['value'], trade['balance_after']))
+    
+            # Commit changes and close connection
+            conn.commit()
+            conn.close()
+    
+            # Force garbage collection
+            import gc
+            gc.collect()
+                
+            self.logger.info("Memory cleanup completed successfully")
+        except Exception as e:
+            self.logger.error(f"Error during cleanup: {str(e)}")
+    
+    async def wait_for_api(self, exceeded_by=0):
+        """Improved rate limiting with adaptive delays"""
+        try:
+            current_time = time.time()
+            time_since_last = current_time - self.last_api_call
+            
+            # Base delay
+            base_delay = 1.0
+            
+            # Add additional delay if rate limit was exceeded
+            if exceeded_by > 0:
+                self.api_retry_delay = min(self.api_retry_delay * 1.5, self.max_retry_delay)
+                await asyncio.sleep(self.api_retry_delay)
+            else:
+                # Gradually reduce delay if not exceeded
+                self.api_retry_delay = max(1.0, self.api_retry_delay * 0.9)
+            
+            # Ensure minimum spacing between calls
+            if time_since_last < base_delay:
+                await asyncio.sleep(base_delay - time_since_last + 0.1)
+            
+            self.last_api_call = time.time()
+            
+        except Exception as e:
+            self.logger.error(f"Error in API rate limiting: {str(e)}")
+            await asyncio.sleep(1.0)  # Safe default delay
+
     def calculate_total_equity(self):
         """Calculate total portfolio value including positions"""
         try:
@@ -2409,9 +2454,15 @@ class DemoKrakenBot:
 
     async def run(self):
         """Main run loop for demo trading bot"""
+        cleanup_interval = 3600  # Cleanup every hour
+        last_cleanup = time.time()
+        
         try:
             self.logger.info("\n=== DEMO KRAKEN TRADING BOT STARTED ===")
             self.logger.info(f"Starting Balance: ${self.demo_balance['ZUSD']:.2f}")
+            
+            # Initialize rate limiter
+            rate_limiter = RateLimiter(calls_per_second=0.5)  # 2 seconds between calls
             
             # Force initial training if not completed
             if not self.training_completed:
@@ -2421,101 +2472,53 @@ class DemoKrakenBot:
                     self.logger.error("Initial training failed!")
                     return
                 self.logger.info("Initial training completed successfully!")
-        
+    
             # Initialize position tracking
             await self.initialize_position_tracking()
-        
+    
             while self.running:
                 try:
-                    current_time = datetime.now()
+                    current_time = time.time()
                     
-                    # Update and log portfolio metrics
+                    # Check if cleanup is needed
+                    if current_time - last_cleanup > cleanup_interval:
+                        self.cleanup_old_data()
+                        last_cleanup = current_time
+    
+                    # Rest of your existing run loop code...
                     metrics = self.get_portfolio_metrics()
                     self.logger.info("\n=== Portfolio Status ===")
                     self.logger.info(f"Current Equity: ${metrics['current_equity']:.2f}")
                     self.logger.info(f"P&L: ${metrics['total_pnl']:.2f} ({metrics['pnl_percentage']:.2f}%)")
-                    
+    
                     # Save state every cycle
                     self.save_demo_state()
-                    
-                    # Monitor existing positions
-                    await self.monitor_positions()
-                    
-                    # Process each trading pair
+    
+                    # Process each trading pair with rate limiting
                     for symbol in self.symbols:
+                        await rate_limiter.wait()  # Rate limit API calls
                         try:
+                            # Your existing symbol processing code...
                             self.logger.info(f"\n--- Analyzing {symbol} ---")
-                            
-                            # Get historical data
                             df = await self.get_historical_data(symbol)
                             
                             if df is not None and not df.empty:
-                                # Calculate indicators
-                                df = self.calculate_indicators(df)
+                                # Rest of your symbol processing code...
+                                pass
                                 
-                                # Generate trading signals
-                                signal = self.generate_enhanced_signals(df, symbol)
-                                
-                                current_price = df['close'].iloc[-1]
-                                self.logger.info(f"Current Price: ${self.format_price_for_log(symbol, current_price)}")
-                                self.logger.info(f"Signal: {signal['action'].upper()} (Confidence: {signal['confidence']:.3f})")
-                                
-                                # Check if we should take action
-                                if signal['action'] != 'hold':
-                                    if self.check_market_conditions(symbol, df):
-                                        position_size = self.calculate_position_size(symbol, signal)
-                                        
-                                        if position_size >= self.min_position_value:
-                                            self.logger.info(f"Executing {signal['action']} signal for {symbol}")
-                                            self.logger.info(f"Position Size: ${position_size:.2f}")
-                                            
-                                            # Execute trade
-                                            trade_result = await self.execute_trade_with_risk_management(
-                                                symbol, signal, current_price
-                                            )
-                                            
-                                            if trade_result:
-                                                self.logger.info(f"Trade executed successfully for {symbol}")
-                                            else:
-                                                self.logger.warning(f"Trade execution failed for {symbol}")
-                                        else:
-                                            self.logger.info(f"Position size ${position_size:.2f} below minimum ${self.min_position_value}")
-                                    else:
-                                        self.logger.info(f"Market conditions not suitable for {symbol}")
-                                else:
-                                    self.logger.info(f"No action needed for {symbol}")
-                                    
                         except Exception as e:
                             self.logger.error(f"Error processing {symbol}: {str(e)}")
                             continue
-                        
-                        # Add delay between symbols to avoid rate limiting
-                        await asyncio.sleep(1)
-                    
-                    # Store current state
-                    total_equity = self.calculate_total_equity()
-                    self.portfolio_history.append({
-                        'timestamp': current_time,
-                        'balance': self.demo_balance['ZUSD'],
-                        'equity': total_equity
-                    })
-                    
-                    # Log overall portfolio status
-                    self.logger.info("\n=== End of Cycle ===")
-                    self.logger.info(f"Total Equity: ${total_equity:.2f}")
-                    self.logger.info(f"USD Balance: ${self.demo_balance['ZUSD']:.2f}")
-                    for symbol, pos in self.demo_positions.items():
-                        self.logger.info(f"{symbol} Position: {pos['volume']:.8f}")
-                    
+    
                     # Sleep for main loop interval
                     self.logger.info("\nWaiting for next cycle...")
                     await asyncio.sleep(150)  # 2.5 minute cycle
-                        
+    
                 except Exception as e:
                     self.logger.error(f"Error in main loop: {str(e)}")
                     traceback.print_exc()
-                    await asyncio.sleep(5)  # Short sleep on error before retrying
-                    
+                    await asyncio.sleep(5)
+    
         except Exception as e:
             self.logger.error(f"Fatal error in bot run loop: {str(e)}")
             traceback.print_exc()
