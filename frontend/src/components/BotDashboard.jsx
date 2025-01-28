@@ -35,28 +35,28 @@ const BotDashboard = ({ mode = 'live', userId = '1' }) => {
   axios.defaults.withCredentials = true;  // If needed for cookies/sessions
   axios.defaults.httpsAgent = true;       // Ensure HTTPS
 
-  const fetchBotStatus = useCallback(async () => {
-    try {
-      const endpoint = mode === 'demo' ? '/api/demo-status' : '/api/live-status';
-      console.log('Fetching from:', `${API_URL}${endpoint}`);
-      const response = await axios.get(`${API_URL}${endpoint}`, {
-        headers: {
-          'Content-Type': 'application/json',
-          // Add any additional security headers if needed
-        }
-      });
-      
-      if (response.data.status === 'success') {
-        setBotData(response.data.data);
-        setError(null);
+const fetchBotStatus = useCallback(async () => {
+  try {
+    const endpoint = mode === 'demo' ? '/api/demo-status' : '/api/live-status';
+    console.log('Fetching from:', `${API_URL}${endpoint}`);
+    const response = await axios.get(`${API_URL}${endpoint}`, {
+      withCredentials: true,
+      headers: {
+        'Content-Type': 'application/json',
       }
-    } catch (err) {
-      console.error('Error fetching bot status:', err);
-      setError('Unable to connect to trading server. Please check your connection and ensure HTTPS is properly configured.');
-    } finally {
-      setIsLoading(false);
+    });
+    
+    if (response.data.status === 'success') {
+      setBotData(response.data.data);
+      setError(null);
     }
-  }, [API_URL, mode]);
+  } catch (err) {
+    console.error('Error fetching bot status:', err);
+    setError('Unable to connect to trading server. Please check your connection.');
+  } finally {
+    setIsLoading(false);
+  }
+}, [API_URL, mode]);
 
   useEffect(() => {
     fetchBotStatus();
@@ -84,9 +84,10 @@ const BotDashboard = ({ mode = 'live', userId = '1' }) => {
         apiKey: apiConfig.apiKey,
         apiSecret: apiConfig.apiSecret
       }, {
+        withCredentials: true,
         headers: {
           'Content-Type': 'application/json',
-        }
+      }
       });
       
       if (response.data.status === 'success') {
@@ -105,6 +106,7 @@ const BotDashboard = ({ mode = 'live', userId = '1' }) => {
       setIsActionLoading(true);
       const endpoint = `/api/stop-bot/${userId}`;
       const response = await axios.post(`${API_URL}${endpoint}`, {}, {
+        withCredentials: true,
         headers: {
           'Content-Type': 'application/json',
         }
