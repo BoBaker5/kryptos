@@ -3,7 +3,7 @@ import axios from 'axios';
 import { Activity, DollarSign, LineChart } from 'lucide-react';
 import { ResponsiveContainer, Line, XAxis, YAxis, CartesianGrid, Tooltip, LineChart as RechartsLineChart } from 'recharts';
 
-const BotDashboard = ({ mode = 'live' }) => {
+const BotDashboard = ({ mode = 'live', userId = '1' }) => {  // Added userId prop with default value
   const API_URL = 'http://129.158.53.116:8000';
   
   const [botData, setBotData] = useState({
