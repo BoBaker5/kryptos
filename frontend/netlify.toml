@@ -1,12 +1,8 @@
 [build]
-  base = "frontend"
   command = "npm run build"
   publish = "build"
 
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
+[build.environment]
+  NODE_VERSION = "18"  # or whatever version you're using
 
-[context.production.environment]
-  REACT_APP_API_URL = "http://129.158.53.116:8000"
+# Remove any Go-related configurations since your project doesn't need Go
