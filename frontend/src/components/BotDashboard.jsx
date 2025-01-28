@@ -35,29 +35,29 @@ const BotDashboard = ({ mode = 'live', userId = '1' }) => {
   axios.defaults.withCredentials = true;  // If needed for cookies/sessions
   axios.defaults.httpsAgent = true;       // Ensure HTTPS
 
-const fetchBotStatus = useCallback(async () => {
-  try {
-    const endpoint = mode === 'demo' ? '/api/demo-status' : '/api/live-status';
-    console.log('Fetching from:', `${API_URL}${endpoint}`);
-    const response = await axios.get(`${API_URL}${endpoint}`, {
-      withCredentials: true,
-      headers: {
-        'Content-Type': 'application/json',
+  const fetchBotStatus = useCallback(async () => {
+      try {
+          const endpoint = mode === 'demo' ? '/api/demo-status' : '/api/live-status';
+          console.log('Fetching from:', `${API_URL}${endpoint}`);
+          const response = await axios.get(`${API_URL}${endpoint}`, {
+              // Removed withCredentials
+              headers: {
+                  'Content-Type': 'application/json'
+              }
+          });
+          
+          if (response.data.status === 'success') {
+              setBotData(response.data.data);
+              setError(null);
+          }
+      } catch (err) {
+          console.error('Error fetching bot status:', err);
+          setError('Unable to connect to trading server. Please check your connection.');
+      } finally {
+          setIsLoading(false);
       }
-    });
-    
-    if (response.data.status === 'success') {
-      setBotData(response.data.data);
-      setError(null);
-    }
-  } catch (err) {
-    console.error('Error fetching bot status:', err);
-    setError('Unable to connect to trading server. Please check your connection.');
-  } finally {
-    setIsLoading(false);
-  }
-}, [API_URL, mode]);
-
+  }, [API_URL, mode]);
+  
   useEffect(() => {
     fetchBotStatus();
     const interval = setInterval(fetchBotStatus, 30000);
