@@ -1,4 +1,3 @@
-// App.js
 import React, { useState } from 'react';
 import { 
   LayoutDashboard, 
@@ -6,7 +5,7 @@ import {
   Activity, 
   Settings 
 } from 'lucide-react';
-import Header from './components/Header';
+// Remove unused Header import since it's not being used
 import BotDashboard from './components/BotDashboard';
 
 function App() {
