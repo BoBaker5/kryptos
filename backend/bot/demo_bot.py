@@ -2505,6 +2505,8 @@ class DemoKrakenBot:
                     self.logger.error("Initial training failed!")
                     return
                 self.logger.info("Initial training completed successfully!")
+                self.training_completed = True
+                self.is_initially_trained = True
     
             # Initialize position tracking
             await self.initialize_position_tracking()
@@ -2518,31 +2520,67 @@ class DemoKrakenBot:
                         self.cleanup_old_data()
                         last_cleanup = current_time
     
-                    # Rest of your existing run loop code...
+                    # Update metrics and save state
                     metrics = self.get_portfolio_metrics()
                     self.logger.info("\n=== Portfolio Status ===")
                     self.logger.info(f"Current Equity: ${metrics['current_equity']:.2f}")
                     self.logger.info(f"P&L: ${metrics['total_pnl']:.2f} ({metrics['pnl_percentage']:.2f}%)")
-    
-                    # Save state every cycle
                     self.save_demo_state()
     
                     # Process each trading pair with rate limiting
                     for symbol in self.symbols:
-                        await rate_limiter.wait()  # Rate limit API calls
+                        await rate_limiter.wait()
                         try:
-                            # Your existing symbol processing code...
                             self.logger.info(f"\n--- Analyzing {symbol} ---")
                             df = await self.get_historical_data(symbol)
                             
                             if df is not None and not df.empty:
-                                # Rest of your symbol processing code...
-                                pass
+                                # Calculate indicators
+                                df = self.calculate_indicators(df)
                                 
+                                # Generate trading signals
+                                signal = self.generate_enhanced_signals(df, symbol)
+                                
+                                current_price = df['close'].iloc[-1]
+                                self.logger.info(f"Current Price: ${self.format_price_for_log(symbol, current_price)}")
+                                self.logger.info(f"Signal: {signal['action'].upper()} (Confidence: {signal['confidence']:.3f})")
+                                
+                                # Execute trades if conditions are met
+                                if signal['action'] != 'hold':
+                                    # Check market conditions
+                                    if self.check_market_conditions(symbol, df):
+                                        # Calculate position size
+                                        position_size = self.calculate_position_size(symbol, signal)
+                                        
+                                        if position_size >= self.min_position_value:
+                                            self.logger.info(f"Executing {signal['action']} signal for {symbol}")
+                                            self.logger.info(f"Position Size: ${position_size:.2f}")
+                                            
+                                            # Execute trade
+                                            trade_result = await self.execute_trade_with_risk_management(
+                                                symbol, signal, current_price
+                                            )
+                                            
+                                            if trade_result:
+                                                self.logger.info(f"Trade executed successfully for {symbol}")
+                                                # Update portfolio after trade
+                                                self.save_demo_state()
+                                            else:
+                                                self.logger.warning(f"Trade execution failed for {symbol}")
+                                        else:
+                                            self.logger.info(f"Position size ${position_size:.2f} below minimum ${self.min_position_value}")
+                                    else:
+                                        self.logger.info(f"Market conditions not suitable for {symbol}")
+                                else:
+                                    self.logger.info(f"No action needed for {symbol}")
+                                        
                         except Exception as e:
                             self.logger.error(f"Error processing {symbol}: {str(e)}")
                             continue
-    
+                    
+                    # Monitor existing positions
+                    await self.monitor_positions()
+                    
                     # Sleep for main loop interval
                     self.logger.info("\nWaiting for next cycle...")
                     await asyncio.sleep(150)  # 2.5 minute cycle
