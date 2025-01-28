@@ -5,7 +5,7 @@ import { ResponsiveContainer, Line, XAxis, YAxis, CartesianGrid, Tooltip, LineCh
 
 const BotDashboard = ({ mode = 'live', userId = '1' }) => {
   // Use HTTPS instead of HTTP
-  const API_URL = 'https://129.158.53.116:8000';
+  const API_URL = 'https://kryptostrading.com';
   // Alternatively, use relative URLs to automatically match the protocol
   // const API_URL = '';  // Empty string for relative URLs
   
