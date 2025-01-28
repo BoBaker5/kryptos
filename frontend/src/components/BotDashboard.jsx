@@ -3,8 +3,11 @@ import axios from 'axios';
 import { Activity, DollarSign, LineChart } from 'lucide-react';
 import { ResponsiveContainer, Line, XAxis, YAxis, CartesianGrid, Tooltip, LineChart as RechartsLineChart } from 'recharts';
 
-const BotDashboard = ({ mode = 'live', userId = '1' }) => {  // Added userId prop with default value
-  const API_URL = 'http://129.158.53.116:8000';
+const BotDashboard = ({ mode = 'live', userId = '1' }) => {
+  // Use HTTPS instead of HTTP
+  const API_URL = 'https://129.158.53.116:8000';
+  // Alternatively, use relative URLs to automatically match the protocol
+  // const API_URL = '';  // Empty string for relative URLs
   
   const [botData, setBotData] = useState({
     status: 'stopped',
@@ -28,11 +31,20 @@ const BotDashboard = ({ mode = 'live', userId = '1' }) => {  // Added userId pro
   const [isLoading, setIsLoading] = useState(true);
   const [isActionLoading, setIsActionLoading] = useState(false);
 
+  // Configure axios defaults for HTTPS
+  axios.defaults.withCredentials = true;  // If needed for cookies/sessions
+  axios.defaults.httpsAgent = true;       // Ensure HTTPS
+
   const fetchBotStatus = useCallback(async () => {
     try {
       const endpoint = mode === 'demo' ? '/api/demo-status' : '/api/live-status';
       console.log('Fetching from:', `${API_URL}${endpoint}`);
-      const response = await axios.get(`${API_URL}${endpoint}`);
+      const response = await axios.get(`${API_URL}${endpoint}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          // Add any additional security headers if needed
+        }
+      });
       
       if (response.data.status === 'success') {
         setBotData(response.data.data);
@@ -40,7 +52,7 @@ const BotDashboard = ({ mode = 'live', userId = '1' }) => {  // Added userId pro
       }
     } catch (err) {
       console.error('Error fetching bot status:', err);
-      setError('Unable to connect to trading server. Please check your connection.');
+      setError('Unable to connect to trading server. Please check your connection and ensure HTTPS is properly configured.');
     } finally {
       setIsLoading(false);
     }
@@ -71,6 +83,10 @@ const BotDashboard = ({ mode = 'live', userId = '1' }) => {  // Added userId pro
       const response = await axios.post(`${API_URL}${endpoint}`, {
         apiKey: apiConfig.apiKey,
         apiSecret: apiConfig.apiSecret
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+        }
       });
       
       if (response.data.status === 'success') {
@@ -88,7 +104,11 @@ const BotDashboard = ({ mode = 'live', userId = '1' }) => {  // Added userId pro
     try {
       setIsActionLoading(true);
       const endpoint = `/api/stop-bot/${userId}`;
-      const response = await axios.post(`${API_URL}${endpoint}`);
+      const response = await axios.post(`${API_URL}${endpoint}`, {}, {
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
       
       if (response.data.status === 'success') {
         await fetchBotStatus();
