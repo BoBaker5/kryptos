@@ -51,7 +51,7 @@ const BotDashboard = ({ mode = 'live' }) => {
     fetchBotStatus();
     const interval = setInterval(fetchBotStatus, 30000);
     return () => clearInterval(interval);
-  }, [mode]);
+  }, [fetchBotStatus]);
 
   const handleApiKeyChange = (field, value) => {
     setApiConfig(prev => ({
