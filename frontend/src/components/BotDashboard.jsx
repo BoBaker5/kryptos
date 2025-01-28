@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { Activity, DollarSign, LineChart } from 'lucide-react';
 import { ResponsiveContainer, Line, XAxis, YAxis, CartesianGrid, Tooltip, LineChart as RechartsLineChart } from 'recharts';
@@ -29,7 +29,7 @@ const BotDashboard = ({ mode = 'live' }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [isActionLoading, setIsActionLoading] = useState(false);
 
-  const fetchBotStatus = async () => {
+  const fetchBotStatus = useCallback(async () => {
     try {
       const endpoint = mode === 'demo' ? '/api/demo-status' : '/api/live-status';
       console.log('Fetching from:', `${API_URL}${endpoint}`);
@@ -45,7 +45,7 @@ const BotDashboard = ({ mode = 'live' }) => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [API_URL, mode]);
 
   useEffect(() => {
     fetchBotStatus();
