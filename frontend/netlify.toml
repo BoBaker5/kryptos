@@ -1,8 +1,12 @@
 [build]
-  command = "npm run build"
+  base = "frontend"
+  command = "CI=false npm run build"
   publish = "build"
 
 [build.environment]
-  NODE_VERSION = "18"  # or whatever version you're using
+  NODE_VERSION = "18"
 
-# Remove any Go-related configurations since your project doesn't need Go
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
