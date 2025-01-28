@@ -4,8 +4,7 @@ import { Activity, DollarSign, LineChart } from 'lucide-react';
 import { ResponsiveContainer, Line, XAxis, YAxis, CartesianGrid, Tooltip, LineChart as RechartsLineChart } from 'recharts';
 
 const BotDashboard = ({ mode = 'live' }) => {
-  const API_URL = 'http://localhost:8000';
-  const userId = 1; // Temporary user ID for testing
+  const API_URL = 'http://129.158.53.116:8000';
   
   const [botData, setBotData] = useState({
     status: 'stopped',
