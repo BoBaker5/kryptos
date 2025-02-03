@@ -1,22 +1,47 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, 
   LineChart, 
   Activity, 
   Settings 
 } from 'lucide-react';
-// Remove unused Header import since it's not being used
 import BotDashboard from './components/BotDashboard';
 
 function App() {
   const [currentView, setCurrentView] = useState('live');
-  
+  const [connectionStatus, setConnectionStatus] = useState('disconnected');
+
   const navItems = [
     { id: 'live', label: 'Live Trading', icon: LayoutDashboard },
     { id: 'demo', label: 'Demo Account', icon: LineChart },
     { id: 'analytics', label: 'Analytics', icon: Activity },
     { id: 'settings', label: 'Settings', icon: Settings }
   ];
+
+  // Check API connection
+  useEffect(() => {
+    const checkConnection = async () => {
+      try {
+        const response = await fetch('/api/health');
+        if (response.ok) {
+          setConnectionStatus('connected');
+        } else {
+          setConnectionStatus('error');
+        }
+      } catch (error) {
+        console.error('Connection error:', error);
+        setConnectionStatus('error');
+      }
+    };
+
+    // Initial check
+    checkConnection();
+
+    // Set up periodic checking
+    const interval = setInterval(checkConnection, 30000); // Check every 30 seconds
+
+    return () => clearInterval(interval);
+  }, []);
 
   const renderContent = () => {
     switch (currentView) {
@@ -38,6 +63,28 @@ function App() {
         );
       default:
         return <BotDashboard mode="live" />;
+    }
+  };
+
+  const getConnectionStatusStyles = () => {
+    switch (connectionStatus) {
+      case 'connected':
+        return 'bg-green-500';
+      case 'error':
+        return 'bg-red-500';
+      default:
+        return 'bg-yellow-500';
+    }
+  };
+
+  const getConnectionText = () => {
+    switch (connectionStatus) {
+      case 'connected':
+        return 'Connected';
+      case 'error':
+        return 'Connection Error';
+      default:
+        return 'Connecting...';
     }
   };
 
@@ -65,16 +112,18 @@ function App() {
             </button>
           ))}
         </nav>
+
         {/* Connection Status */}
         <div className="absolute bottom-0 w-full p-4">
           <div className="flex items-center justify-center px-4 py-2 bg-[#002b4d] rounded">
             <div className="flex items-center">
-              <div className="h-2 w-2 rounded-full bg-green-500 mr-2"></div>
-              <span className="text-sm text-gray-400">Connected</span>
+              <div className={`h-2 w-2 rounded-full ${getConnectionStatusStyles()} mr-2`}></div>
+              <span className="text-sm text-gray-400">{getConnectionText()}</span>
             </div>
           </div>
         </div>
       </div>
+
       {/* Main Content */}
       <div className="ml-64 flex-1 bg-gray-50">
         <main className="h-full">
