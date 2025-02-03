@@ -1463,13 +1463,15 @@ class DemoKrakenBot:
             if not price or price <= 0:
                 self.logger.error(f"Invalid price for {symbol}: {price}")
                 return None
-    
+        
+            # Calculate position size using demo balance
+            position_size = self.calculate_position_size(symbol, signal)
+            if position_size <= 0:
+                return None
+                
             # Get minimum requirements for the symbol
             requirements = self.get_minimum_order_requirements(symbol)
             min_volume = requirements['min_vol']
-            
-            # Get current demo balance and positions
-            total_usd_balance = self.demo_balance['ZUSD']
             
             # SELL LOGIC
             if signal['action'] == 'sell':
@@ -1510,28 +1512,20 @@ class DemoKrakenBot:
                     })
                     
                     self.logger.info(f"Demo SELL executed: {quantity} {symbol} @ ${price}")
-                    self.logger.info(f"Sale Value: ${sale_value:.2f}")
-                    self.logger.info(f"New Balance: ${self.demo_balance['ZUSD']:.2f}")
                     return {'status': 'success', 'trade': trade}
-                    
-            # BUY LOGIC
+                        
+            # BUY LOGIC  
             elif signal['action'] == 'buy':
-                # Calculate position size based on current signal
-                position_size = self.calculate_position_size(symbol, signal)
-                if position_size <= 0:
-                    return None
-                    
                 quantity = position_size / price
                 
                 # Ensure minimum volume
                 if quantity < min_volume:
-                    self.logger.warning(f"Calculated quantity {quantity} below minimum {min_volume}")
                     quantity = min_volume
                     position_size = quantity * price
                 
                 # Check if we have enough balance
-                if position_size > total_usd_balance:
-                    self.logger.warning(f"Insufficient demo balance for trade. Need ${position_size:.2f}, have ${total_usd_balance:.2f}")
+                if position_size > self.demo_balance['ZUSD']:
+                    self.logger.warning(f"Insufficient demo balance. Need ${position_size:.2f}, have ${self.demo_balance['ZUSD']:.2f}")
                     return None
                     
                 # Update balances
@@ -1566,14 +1560,12 @@ class DemoKrakenBot:
                 })
                 
                 self.logger.info(f"Demo BUY executed: {quantity} {symbol} @ ${price}")
-                self.logger.info(f"Position Size: ${position_size:.2f}")
-                self.logger.info(f"New Balance: ${self.demo_balance['ZUSD']:.2f}")
                 return {'status': 'success', 'trade': trade}
-                
+                    
             return None
-            
+                
         except Exception as e:
-            self.logger.error(f"Demo trade execution error: {str(e)}")
+            self.logger.error(f"Demo trade execution error: {e}")
             return None
 
     def update_trade_history(self, symbol: str, action: str, quantity: float):
@@ -2152,37 +2144,38 @@ class DemoKrakenBot:
         except Exception as e:
             self.logger.error(f"Error in trailing stop: {str(e)}")
 
-    def calculate_position_size(self, symbol: str, signal: dict) -> float:
-        try:
-            price = self.get_latest_price(symbol)
-            if price is None or price <= 0:
-                self.logger.error("Invalid price")
-                return 0
-                
-            balance = self.k.get_account_balance()
-            balance_dict = balance.to_dict()['vol'] if isinstance(balance, pd.DataFrame) else balance
-            total_usd_balance = float(balance_dict.get('ZUSD', 0))
-            
-            if total_usd_balance < self.min_zusd_balance:
-                self.logger.warning(f"Balance ${total_usd_balance} below minimum ${self.min_zusd_balance}")
-                return 0
-                
-            allocation = self.symbols[symbol]
-            position_size = min(
-                total_usd_balance * allocation,
-                total_usd_balance * self.max_position_size
-            )
-            
-            # Ensure minimum position size
-            if position_size < self.min_position_value:
-                self.logger.warning(f"Position size ${position_size:.2f} below minimum ${self.min_position_value}")
-                return 0
-                
-            return position_size
-            
-        except Exception as e:
-            self.logger.error(f"Position size calculation error: {str(e)}")
+def calculate_position_size(self, symbol: str, signal: dict) -> float:
+    try:
+        # Get current price from price feed
+        price = self.get_latest_price(symbol)
+        if price is None or price <= 0:
+            self.logger.error("Invalid price")
             return 0
+            
+        # For demo bot, use demo balance instead of Kraken API
+        total_usd_balance = self.demo_balance['ZUSD']
+        
+        if total_usd_balance < self.min_zusd_balance:
+            self.logger.warning(f"Balance ${total_usd_balance} below minimum ${self.min_zusd_balance}")
+            return 0
+            
+        # Calculate position size based on allocation
+        allocation = self.symbols[symbol]
+        position_size = min(
+            total_usd_balance * allocation,
+            total_usd_balance * self.max_position_size
+        )
+        
+        # Ensure minimum position size
+        if position_size < self.min_position_value:
+            self.logger.warning(f"Position size ${position_size:.2f} below minimum ${self.min_position_value}")
+            return 0
+            
+        return position_size
+        
+    except Exception as e:
+        self.logger.error(f"Demo position size calculation error: {e}")
+        return 0
         
     async def retrain_models(self):
         try:
