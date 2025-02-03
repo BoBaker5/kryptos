@@ -568,7 +568,8 @@ class EnhancedKrakenCryptoBot:
     def __init__(self, api_key: str, secret_key: str):
         # Initialize logging first
         self.logger = self._setup_logging()
-
+        self.live_running = False
+        
         try:
             # Initialize Kraken API with rate limiting
             self.kraken = krakenex.API(api_key, secret_key)
