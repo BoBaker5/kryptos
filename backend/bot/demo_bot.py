@@ -1704,7 +1704,7 @@ class DemoKrakenBot:
             self.logger.error(f"Error initializing demo position tracking: {str(e)}")
             return False
         
-        def setup_database(self):
+    def setup_database(self):
         """Set up SQLite database for storing trading data"""
         try:
             conn = sqlite3.connect(self.db_name)
