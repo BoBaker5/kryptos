@@ -587,967 +587,919 @@ class RateLimiter:
 
 class DemoKrakenBot:
     def __init__(self):
-        """Initialize the demo trading bot"""
-        # Initialize logging first
-        self.logger = self._setup_logging()
-        self.db_name = 'crypto_trading.db'
+    """Initialize the demo trading bot"""
+    # Initialize logging first
+    self.logger = self._setup_logging()
+    self.db_name = 'crypto_trading.db'
+    
+    try:
+        # Initialize API and rate limiting
+        self.timeframe = 5  # 5-minute intervals
+        self.last_api_call = time.time()
+        self.api_retry_delay = 1.0
+        self.max_retry_delay = 60
         
-        try:
-            # Initialize API and rate limiting
-            self.timeframe = 5  # 5-minute intervals
-            self.last_api_call = time.time()
-            self.api_retry_delay = 1.0
-            self.max_retry_delay = 60
-            
-            # Initialize Kraken API
-            self.kraken = krakenex.API()
-            self.k = KrakenAPI(self.kraken, retry=0.5)
-            self.running = True
-            
-            # Initialize tracking components
-            self.position_tracker = PositionTracker()
-            self.init_database()
-            
-            # Initialize ML and AI components
-            self.model_manager = MLModelManager()
-            self.ai_enhancer = AITradingEnhancer()
-            
-            # Training state
-            self.is_initially_trained = False
-            self.training_completed = False
-            self.min_training_data = 100
-            self.initial_training_hours = 1
-            self.start_time = datetime.now()
-            
-            # Account state
-            self.demo_balance = {'ZUSD': 100000.0}
-            self.demo_positions = {}
-            self.trade_history = []
-            self.portfolio_history = [{
-                'timestamp': datetime.now(),
-                'balance': 100000.0,
-                'equity': 100000.0
-            }]
-            
-            # Trading pairs and allocations
-            self.symbols = {
-                "SOLUSD": 0.20,
-                "AVAXUSD": 0.20,
-                "XRPUSD": 0.20,
-                "XDGUSD": 0.15,
-                "SHIBUSD": 0.10,
-                "PEPEUSD": 0.15
-            }
-            
-            # Risk parameters
-            self.max_drawdown = 0.10
-            self.trailing_stop_pct = 0.03
-            self.max_trades_per_hour = 3
-            self.trade_cooldown = 300
-            self.last_trade_time = {}
-            self.max_position_size = 0.3
-            self.min_position_value = 2.0
-            self.max_total_risk = 0.15
-            self.stop_loss_pct = 0.03
-            self.take_profit_pct = 0.05
-            self.min_zusd_balance = 5.0
-            
-            # Technical parameters
-            self.sma_short = 20
-            self.sma_long = 50
-            self.rsi_period = 14
-            self.rsi_oversold = 35
-            self.rsi_overbought = 65
-            self.macd_fast = 12
-            self.macd_slow = 26
-            self.macd_signal = 9
-            self.volatility_window = 20
-            self.volume_ma_window = 20
-            self.prediction_threshold = 0.2
-            
-            # Market conditions
-            self.market_conditions = {
-                'high_volatility': 0.05,
-                'low_liquidity': 1000,
-                'excessive_spread': 0.03
-            }
-            
-            # Performance tracking
-            self.performance_metrics = {}
-            
-            # Load saved state
-            self.load_demo_state()
-            
-            self.logger.info("Demo bot initialization completed successfully")
-            
-        except Exception as e:
-            self.logger.error(f"Initialization error: {str(e)}")
-            raise
+        # Initialize Kraken API
+        self.kraken = krakenex.API()
+        self.k = KrakenAPI(self.kraken, retry=0.5)
+        self.running = True
         
+        # Initialize tracking components
+        self.position_tracker = PositionTracker()
+        self.init_database()
+        
+        # Initialize ML and AI components
+        self.model_manager = MLModelManager()
+        self.ai_enhancer = AITradingEnhancer()
+        
+        # Training state
+        self.is_initially_trained = False
+        self.training_completed = False
+        self.min_training_data = 100
+        self.initial_training_hours = 1
+        self.start_time = datetime.now()
+        
+        # Account state
+        self.demo_balance = {'ZUSD': 100000.0}
+        self.demo_positions = {}
+        self.trade_history = []
+        self.portfolio_history = [{
+            'timestamp': datetime.now(),
+            'balance': 100000.0,
+            'equity': 100000.0
+        }]
+        
+        # Trading pairs and allocations
+        self.symbols = {
+            "SOLUSD": 0.20,
+            "AVAXUSD": 0.20,
+            "XRPUSD": 0.20,
+            "XDGUSD": 0.15,
+            "SHIBUSD": 0.10,
+            "PEPEUSD": 0.15
+        }
+        
+        # Risk parameters
+        self.max_drawdown = 0.10
+        self.trailing_stop_pct = 0.03
+        self.max_trades_per_hour = 3
+        self.trade_cooldown = 300
+        self.last_trade_time = {}
+        self.max_position_size = 0.3
+        self.min_position_value = 2.0
+        self.max_total_risk = 0.15
+        self.stop_loss_pct = 0.03
+        self.take_profit_pct = 0.05
+        self.min_zusd_balance = 5.0
+        
+        # Technical parameters
+        self.sma_short = 20
+        self.sma_long = 50
+        self.rsi_period = 14
+        self.rsi_oversold = 35
+        self.rsi_overbought = 65
+        self.macd_fast = 12
+        self.macd_slow = 26
+        self.macd_signal = 9
+        self.volatility_window = 20
+        self.volume_ma_window = 20
+        self.prediction_threshold = 0.2
+        
+        # Market conditions
+        self.market_conditions = {
+            'high_volatility': 0.05,
+            'low_liquidity': 1000,
+            'excessive_spread': 0.03
+        }
+        
+        # Performance tracking
+        self.performance_metrics = {}
+        
+        # Load saved state
+        self.load_demo_state()
+        
+        self.logger.info("Demo bot initialization completed successfully")
+        
+    except Exception as e:
+        self.logger.error(f"Initialization error: {str(e)}")
+        raise
+    
     def get_demo_balance(self):
-        """Get current demo account balance"""
-        try:
-            # Calculate total value of positions
-            position_value = 0
-            for symbol, position in self.demo_positions.items():
-                current_price = self.get_latest_price(symbol)
-                if current_price:
-                    position_value += position['volume'] * current_price
+    """Get current demo account balance"""
+    try:
+        # Calculate total value of positions
+        position_value = 0
+        for symbol, position in self.demo_positions.items():
+            current_price = self.get_latest_price(symbol)
+            if current_price:
+                position_value += position['volume'] * current_price
+    
+        # Calculate total equity
+        total_equity = self.demo_balance['ZUSD'] + position_value
+    
+        balance_info = pd.Series(self.demo_balance)
         
-            # Calculate total equity
-            total_equity = self.demo_balance['ZUSD'] + position_value
+        # Log balance info
+        self.logger.info("\n=== Demo Account Balance ===")
+        self.logger.info(f"USD Balance: ${self.demo_balance['ZUSD']:.2f}")
+        self.logger.info(f"Position Value: ${position_value:.2f}")
+        self.logger.info(f"Total Equity: ${total_equity:.2f}")
         
-            balance_info = pd.Series(self.demo_balance)
-            
-            # Log balance info
-            self.logger.info("\n=== Demo Account Balance ===")
-            self.logger.info(f"USD Balance: ${self.demo_balance['ZUSD']:.2f}")
-            self.logger.info(f"Position Value: ${position_value:.2f}")
-            self.logger.info(f"Total Equity: ${total_equity:.2f}")
-            
-            for currency, amount in self.demo_balance.items():
-                if currency != 'ZUSD' and amount > 0:
-                    self.logger.info(f"{currency}: {amount:.8f}")
-        
-            return balance_info
-        
-        except Exception as e:
-            self.logger.error(f"Error getting demo balance: {str(e)}")
-            return pd.Series(self.demo_balance)
+        for currency, amount in self.demo_balance.items():
+            if currency != 'ZUSD' and amount > 0:
+                self.logger.info(f"{currency}: {amount:.8f}")
+    
+        return balance_info
+    
+    except Exception as e:
+        self.logger.error(f"Error getting demo balance: {str(e)}")
+        return pd.Series(self.demo_balance)
     
     def get_demo_positions(self):
-        """Get current demo positions"""
-        try:
-            formatted_positions = []
-            for symbol, pos in self.demo_positions.items():
-                current_price = self.get_latest_price(symbol)
-                if current_price:
-                    entry_price = pos['entry_price']
-                    volume = pos['volume']
-                    pnl = (current_price - entry_price) * volume
-                    pnl_percentage = ((current_price - entry_price) / entry_price) * 100
+    """Get current demo positions"""
+    try:
+        formatted_positions = []
+        for symbol, pos in self.demo_positions.items():
+            current_price = self.get_latest_price(symbol)
+            if current_price:
+                entry_price = pos['entry_price']
+                volume = pos['volume']
+                pnl = (current_price - entry_price) * volume
+                pnl_percentage = ((current_price - entry_price) / entry_price) * 100
     
-                    formatted_pos = {
-                        "symbol": symbol,
-                        "quantity": str(volume),
-                        "entry_price": str(entry_price),
-                        "current_price": str(current_price),
-                        "pnl": str(pnl),
-                        "pnl_percentage": str(pnl_percentage),
-                        "entry_time": pos['entry_time'].isoformat()
-                    }
-                    formatted_positions.append(formatted_pos)
+                formatted_pos = {
+                    "symbol": symbol,
+                    "quantity": str(volume),
+                    "entry_price": str(entry_price),
+                    "current_price": str(current_price),
+                    "pnl": str(pnl),
+                    "pnl_percentage": str(pnl_percentage),
+                    "entry_time": pos['entry_time'].isoformat()
+                }
+                formatted_positions.append(formatted_pos)
     
-            # Log positions
-            if formatted_positions:
-                self.logger.info("\n=== Demo Positions ===")
-                for pos in formatted_positions:
-                    self.logger.info(f"{pos['symbol']}: {float(pos['quantity']):.8f} @ ${float(pos['current_price']):.8f}")
-                    self.logger.info(f"P&L: ${float(pos['pnl']):.2f} ({float(pos['pnl_percentage']):.2f}%)")
+        # Log positions
+        if formatted_positions:
+            self.logger.info("\n=== Demo Positions ===")
+            for pos in formatted_positions:
+                self.logger.info(f"{pos['symbol']}: {float(pos['quantity']):.8f} @ ${float(pos['current_price']):.8f}")
+                self.logger.info(f"P&L: ${float(pos['pnl']):.2f} ({float(pos['pnl_percentage']):.2f}%)")
     
-            return formatted_positions
+        return formatted_positions
     
-        except Exception as e:
-            self.logger.error(f"Error getting demo positions: {str(e)}")
-            return []
-
+    except Exception as e:
+        self.logger.error(f"Error getting demo positions: {str(e)}")
+        return []
+    
     def cleanup_old_data(self):
-        """Cleanup old data to manage memory usage"""
-        try:
-            # Connect to database
-            conn = sqlite3.connect(self.db_name)
-            c = conn.cursor()
+    """Cleanup old data to manage memory usage"""
+    try:
+        # Connect to database
+        conn = sqlite3.connect(self.db_name)
+        c = conn.cursor()
     
-            # Keep only last 7 days of market data
-            c.execute('''DELETE FROM market_data 
-                        WHERE timestamp < date('now', '-7 days')''')
+        # Keep only last 7 days of market data
+        c.execute('''DELETE FROM market_data 
+                    WHERE timestamp < date('now', '-7 days')''')
     
-            # Keep only last 1000 portfolio history entries
-            if len(self.portfolio_history) > 1000:
-                self.portfolio_history = self.portfolio_history[-1000:]
-                
-            # Keep only last 100 trades
-            if len(self.trade_history) > 100:
-                self.trade_history = self.trade_history[-100:]
+        # Keep only last 1000 portfolio history entries
+        if len(self.portfolio_history) > 1000:
+            self.portfolio_history = self.portfolio_history[-1000:]
+            
+        # Keep only last 100 trades
+        if len(self.trade_history) > 100:
+            self.trade_history = self.trade_history[-100:]
     
-            # Update database with cleaned data
-            c.execute('DELETE FROM demo_portfolio_history')
-            for entry in self.portfolio_history:
-                c.execute('INSERT INTO demo_portfolio_history VALUES (?, ?, ?)',
-                         (entry['timestamp'].isoformat(), entry['balance'],
-                          entry['equity']))
+        # Update database with cleaned data
+        c.execute('DELETE FROM demo_portfolio_history')
+        for entry in self.portfolio_history:
+            c.execute('INSERT INTO demo_portfolio_history VALUES (?, ?, ?)',
+                     (entry['timestamp'].isoformat(), entry['balance'],
+                      entry['equity']))
     
-            c.execute('DELETE FROM demo_trade_history')
-            for trade in self.trade_history:
-                c.execute('''INSERT INTO demo_trade_history 
-                            VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                         (trade['timestamp'].isoformat(), trade['symbol'],
-                          trade['type'], trade['price'], trade['quantity'],
-                          trade['value'], trade['balance_after']))
+        c.execute('DELETE FROM demo_trade_history')
+        for trade in self.trade_history:
+            c.execute('''INSERT INTO demo_trade_history 
+                        VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                     (trade['timestamp'].isoformat(), trade['symbol'],
+                      trade['type'], trade['price'], trade['quantity'],
+                      trade['value'], trade['balance_after']))
     
-            # Commit changes and close connection
-            conn.commit()
-            conn.close()
+        # Commit changes and close connection
+        conn.commit()
+        conn.close()
     
-            # Force garbage collection
-            import gc
-            gc.collect()
-                
-            self.logger.info("Memory cleanup completed successfully")
-        except Exception as e:
-            self.logger.error(f"Error during cleanup: {str(e)}")
+        # Force garbage collection
+        import gc
+        gc.collect()
+            
+        self.logger.info("Memory cleanup completed successfully")
+    except Exception as e:
+        self.logger.error(f"Error during cleanup: {str(e)}")
     
     async def wait_for_api(self, exceeded_by=0):
-        """Improved rate limiting with adaptive delays"""
-        try:
-            current_time = time.time()
-            time_since_last = current_time - self.last_api_call
-            
-            # Base delay
-            base_delay = 1.0
-            
-            # Add additional delay if rate limit was exceeded
-            if exceeded_by > 0:
-                self.api_retry_delay = min(self.api_retry_delay * 1.5, self.max_retry_delay)
-                await asyncio.sleep(self.api_retry_delay)
-            else:
-                # Gradually reduce delay if not exceeded
-                self.api_retry_delay = max(1.0, self.api_retry_delay * 0.9)
-            
-            # Ensure minimum spacing between calls
-            if time_since_last < base_delay:
-                await asyncio.sleep(base_delay - time_since_last + 0.1)
-            
-            self.last_api_call = time.time()
-            
-        except Exception as e:
-            self.logger.error(f"Error in API rate limiting: {str(e)}")
-            await asyncio.sleep(1.0)  # Safe default delay
-
-    def calculate_total_equity(self):
-        """Calculate total portfolio value including positions"""
-        try:
-            equity = self.demo_balance['ZUSD']
-            
-            for symbol, position in self.demo_positions.items():
-                current_price = self.get_latest_price(symbol)
-                if current_price:
-                    position_value = position['volume'] * current_price
-                    equity += position_value
-            
-            return equity
+    """Improved rate limiting with adaptive delays"""
+    try:
+        current_time = time.time()
+        time_since_last = current_time - self.last_api_call
+        
+        # Base delay
+        base_delay = 1.0
+        
+        # Add additional delay if rate limit was exceeded
+        if exceeded_by > 0:
+            self.api_retry_delay = min(self.api_retry_delay * 1.5, self.max_retry_delay)
+            await asyncio.sleep(self.api_retry_delay)
+        else:
+            # Gradually reduce delay if not exceeded
+            self.api_retry_delay = max(1.0, self.api_retry_delay * 0.9)
+        
+        # Ensure minimum spacing between calls
+        if time_since_last < base_delay:
+            await asyncio.sleep(base_delay - time_since_last + 0.1)
+        
+        self.last_api_call = time.time()
+        
+    except Exception as e:
+        self.logger.error(f"Error in API rate limiting: {str(e)}")
+        await asyncio.sleep(1.0)  # Safe default delay
     
-        except Exception as e:
-            self.logger.error(f"Error calculating total equity: {str(e)}")
-            return self.demo_balance['ZUSD']
+    def calculate_total_equity(self):
+    """Calculate total portfolio value including positions"""
+    try:
+        equity = self.demo_balance['ZUSD']
+        
+        for symbol, position in self.demo_positions.items():
+            current_price = self.get_latest_price(symbol)
+            if current_price:
+                position_value = position['volume'] * current_price
+                equity += position_value
+        
+        return equity
+    
+    except Exception as e:
+        self.logger.error(f"Error calculating total equity: {str(e)}")
+        return self.demo_balance['ZUSD']
     
     def get_portfolio_metrics(self):
-        """Get current portfolio performance metrics"""
-        try:
-            current_equity = self.calculate_total_equity()
-            initial_balance = 100000.0
-            
-            metrics = {
-                'current_equity': current_equity,
-                'initial_balance': initial_balance,
-                'total_pnl': current_equity - initial_balance,
-                'pnl_percentage': ((current_equity - initial_balance) / initial_balance) * 100,
-                'positions': self.demo_positions,
-                'balance': self.demo_balance,
-                'trade_history': self.trade_history[-10:],  # Last 10 trades
-                'portfolio_history': self.portfolio_history[-100:]  # Last 100 data points
-            }
-    
-            # Log metrics
-            self.logger.info("\n=== Portfolio Metrics ===")
-            self.logger.info(f"Current Equity: ${metrics['current_equity']:.2f}")
-            self.logger.info(f"Total P&L: ${metrics['total_pnl']:.2f} ({metrics['pnl_percentage']:.2f}%)")
-            
-            return metrics
-    
-        except Exception as e:
-            self.logger.error(f"Error getting portfolio metrics: {str(e)}")
-            return {
-                'current_equity': self.demo_balance['ZUSD'],
-                'initial_balance': 100000.0,
-                'total_pnl': 0,
-                'pnl_percentage': 0,
-                'positions': {},
-                'balance': self.demo_balance,
-                'trade_history': [],
-                'portfolio_history': []
-            }
-            
-    async def wait_for_api(self, exceeded_by=0):
-        """Improved rate limiting with adaptive delays"""
-        try:
-            current_time = time.time()
-            time_since_last_call = current_time - self.last_api_call
-            
-            # Base delay
-            base_delay = 1.0
-            
-            # Add additional delay if rate limit was exceeded
-            if exceeded_by > 0:
-                self.api_retry_delay = min(self.api_retry_delay * 1.5, self.max_retry_delay)
-                await asyncio.sleep(self.api_retry_delay)
-            else:
-                # Gradually reduce delay if not exceeded
-                self.api_retry_delay = max(1.0, self.api_retry_delay * 0.9)
-            
-            # Ensure minimum spacing between calls
-            if time_since_last_call < base_delay:
-                await asyncio.sleep(base_delay - time_since_last_call + 0.1)  # Add small buffer
-            
-            self.last_api_call = time.time()
-            
-        except Exception as e:
-            self.logger.error(f"Error in API rate limiting: {str(e)}")
-            await asyncio.sleep(1.0)  # Safe default delay
-
-    def _setup_logging(self) -> logging.Logger:
-            """Set up logging configuration for console output"""
-            logger = logging.getLogger("KrakenCryptoBot")
-            
-            if logger.handlers:
-                logger.handlers.clear()
-                
-            handler = logging.StreamHandler()
-            formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-            handler.setFormatter(formatter)
-            
-            logger.addHandler(handler)
-            logger.setLevel(logging.INFO)
-            
-            return logger
-
-    def get_formatted_price(self, price: float, symbol: str) -> str:
-        try:
-            if price == 0 or price is None:
-                price = self.get_latest_price(symbol)
-                if price == 0 or price is None:
-                    return "0.00"
-                    
-            decimals = {
-                'SOLUSD': 4,
-                'AVAXUSD': 4,
-                'XRPUSD': 4,
-                'XDGUSD': 4,
-                'SHIBUSD': 10,
-                'PEPEUSD': 10
-            }
-            
-            decimal_places = decimals.get(symbol, 10)
-            return f"{float(price):.{decimal_places}f}"
-            
-        except Exception as e:
-            self.logger.error(f"Error formatting price for {symbol}: {str(e)}")
-            return str(price)
-
-    async def get_historical_data(self, symbol: str, lookback_days: int = 7) -> pd.DataFrame:
-        """Fetch and preprocess historical data"""
-        try:
-            await self.wait_for_api()
-            
-            since = time.time() - (lookback_days * 24 * 60 * 60)
-            ohlc, last = self.k.get_ohlc_data(symbol, interval=self.timeframe, since=since)
-            
-            if ohlc is not None and not ohlc.empty:
-                # Convert all numeric columns to float
-                numeric_columns = ['open', 'high', 'low', 'close', 'volume']
-                for col in numeric_columns:
-                    if col in ohlc.columns:
-                        ohlc[col] = pd.to_numeric(ohlc[col], errors='coerce')
-                
-                # Remove any rows with NaN values in critical columns
-                ohlc = ohlc.dropna(subset=['close', 'volume'])
-                
-                # Ensure positive values
-                ohlc = ohlc[ohlc['close'] > 0]
-                ohlc = ohlc[ohlc['volume'] > 0]
-                
-                self.logger.info(f"Successfully fetched {len(ohlc)} rows of data for {symbol}")
-                return ohlc
-                
-            self.logger.warning(f"No historical data returned for {symbol}")
-            return pd.DataFrame()
-
-        except Exception as e:
-            self.logger.error(f"Error fetching historical data for {symbol}: {str(e)}")
-            return pd.DataFrame()
-
-    def analyze_market_state(self, df: pd.DataFrame) -> dict:
-        """Analyze current market state"""
-        try:
-            if len(df) < self.sma_long:
-                return None
-
-            # Calculate indicators first
-            df = self.calculate_indicators(df)
-            
-            latest = df.iloc[-1]
-
-            # Now we can safely check sma_long since it's calculated
-            if 'sma_long' not in df.columns:
-                self.logger.warning("SMA long not found in dataframe")
-                return None
-
-            # Trend analysis
-            trend = 1 if latest['close'] > latest['sma_long'] else -1
-
-            # Volatility analysis
-            current_volatility = latest['volatility'] if 'volatility' in df.columns else df['close'].pct_change().rolling(20).std().iloc[-1]
-
-            # Volume analysis
-            volume_sma = df['volume'].rolling(window=20).mean().iloc[-1]
-            volume_trend = 1 if latest['volume'] > volume_sma else -1
-
-            return {
-                'trend': trend,
-                'volatility': current_volatility,
-                'volume_trend': volume_trend
-            }
-
-        except Exception as e:
-            self.logger.error(f"Error in market state analysis: {str(e)}")
-            return None
+    """Get current portfolio performance metrics"""
+    try:
+        current_equity = self.calculate_total_equity()
+        initial_balance = 100000.0
         
+        metrics = {
+            'current_equity': current_equity,
+            'initial_balance': initial_balance,
+            'total_pnl': current_equity - initial_balance,
+            'pnl_percentage': ((current_equity - initial_balance) / initial_balance) * 100,
+            'positions': self.demo_positions,
+            'balance': self.demo_balance,
+            'trade_history': self.trade_history[-10:],  # Last 10 trades
+            'portfolio_history': self.portfolio_history[-100:]  # Last 100 data points
+        }
+    
+        # Log metrics
+        self.logger.info("\n=== Portfolio Metrics ===")
+        self.logger.info(f"Current Equity: ${metrics['current_equity']:.2f}")
+        self.logger.info(f"Total P&L: ${metrics['total_pnl']:.2f} ({metrics['pnl_percentage']:.2f}%)")
+        
+        return metrics
+    
+    except Exception as e:
+        self.logger.error(f"Error getting portfolio metrics: {str(e)}")
+        return {
+            'current_equity': self.demo_balance['ZUSD'],
+            'initial_balance': 100000.0,
+            'total_pnl': 0,
+            'pnl_percentage': 0,
+            'positions': {},
+            'balance': self.demo_balance,
+            'trade_history': [],
+            'portfolio_history': []
+        }
+        
+    async def wait_for_api(self, exceeded_by=0):
+    """Improved rate limiting with adaptive delays"""
+    try:
+        current_time = time.time()
+        time_since_last_call = current_time - self.last_api_call
+        
+        # Base delay
+        base_delay = 1.0
+        
+        # Add additional delay if rate limit was exceeded
+        if exceeded_by > 0:
+            self.api_retry_delay = min(self.api_retry_delay * 1.5, self.max_retry_delay)
+            await asyncio.sleep(self.api_retry_delay)
+        else:
+            # Gradually reduce delay if not exceeded
+            self.api_retry_delay = max(1.0, self.api_retry_delay * 0.9)
+        
+        # Ensure minimum spacing between calls
+        if time_since_last_call < base_delay:
+            await asyncio.sleep(base_delay - time_since_last_call + 0.1)  # Add small buffer
+        
+        self.last_api_call = time.time()
+        
+    except Exception as e:
+        self.logger.error(f"Error in API rate limiting: {str(e)}")
+        await asyncio.sleep(1.0)  # Safe default delay
+    
+    def _setup_logging(self) -> logging.Logger:
+        """Set up logging configuration for console output"""
+        logger = logging.getLogger("KrakenCryptoBot")
+        
+        if logger.handlers:
+            logger.handlers.clear()
+            
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+        
+        return logger
+    
+    def get_formatted_price(self, price: float, symbol: str) -> str:
+    try:
+        if price == 0 or price is None:
+            price = self.get_latest_price(symbol)
+            if price == 0 or price is None:
+                return "0.00"
+                
+        decimals = {
+            'SOLUSD': 4,
+            'AVAXUSD': 4,
+            'XRPUSD': 4,
+            'XDGUSD': 4,
+            'SHIBUSD': 10,
+            'PEPEUSD': 10
+        }
+        
+        decimal_places = decimals.get(symbol, 10)
+        return f"{float(price):.{decimal_places}f}"
+        
+    except Exception as e:
+        self.logger.error(f"Error formatting price for {symbol}: {str(e)}")
+        return str(price)
+    
+    async def get_historical_data(self, symbol: str, lookback_days: int = 7) -> pd.DataFrame:
+    """Fetch and preprocess historical data"""
+    try:
+        await self.wait_for_api()
+        
+        since = time.time() - (lookback_days * 24 * 60 * 60)
+        ohlc, last = self.k.get_ohlc_data(symbol, interval=self.timeframe, since=since)
+        
+        if ohlc is not None and not ohlc.empty:
+            # Convert all numeric columns to float
+            numeric_columns = ['open', 'high', 'low', 'close', 'volume']
+            for col in numeric_columns:
+                if col in ohlc.columns:
+                    ohlc[col] = pd.to_numeric(ohlc[col], errors='coerce')
+            
+            # Remove any rows with NaN values in critical columns
+            ohlc = ohlc.dropna(subset=['close', 'volume'])
+            
+            # Ensure positive values
+            ohlc = ohlc[ohlc['close'] > 0]
+            ohlc = ohlc[ohlc['volume'] > 0]
+            
+            self.logger.info(f"Successfully fetched {len(ohlc)} rows of data for {symbol}")
+            return ohlc
+            
+        self.logger.warning(f"No historical data returned for {symbol}")
+        return pd.DataFrame()
+    
+    except Exception as e:
+        self.logger.error(f"Error fetching historical data for {symbol}: {str(e)}")
+        return pd.DataFrame()
+    
+    def analyze_market_state(self, df: pd.DataFrame) -> dict:
+    """Analyze current market state"""
+    try:
+        if len(df) < self.sma_long:
+            return None
+    
+        # Calculate indicators first
+        df = self.calculate_indicators(df)
+        
+        latest = df.iloc[-1]
+    
+        # Now we can safely check sma_long since it's calculated
+        if 'sma_long' not in df.columns:
+            self.logger.warning("SMA long not found in dataframe")
+            return None
+    
+        # Trend analysis
+        trend = 1 if latest['close'] > latest['sma_long'] else -1
+    
+        # Volatility analysis
+        current_volatility = latest['volatility'] if 'volatility' in df.columns else df['close'].pct_change().rolling(20).std().iloc[-1]
+    
+        # Volume analysis
+        volume_sma = df['volume'].rolling(window=20).mean().iloc[-1]
+        volume_trend = 1 if latest['volume'] > volume_sma else -1
+    
+        return {
+            'trend': trend,
+            'volatility': current_volatility,
+            'volume_trend': volume_trend
+        }
+    
+    except Exception as e:
+        self.logger.error(f"Error in market state analysis: {str(e)}")
+        return None
+    
     def calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Calculate technical indicators ensuring all required indicators exist"""
+    """Calculate technical indicators ensuring all required indicators exist"""
+    try:
+        df = df.copy()
+        
+        # Basic price features
+        df['returns'] = df['close'].pct_change()
+        df['log_returns'] = np.log1p(df['returns'])
+        df['rolling_std_20'] = df['returns'].rolling(window=20, min_periods=1).std()
+        
+        # Moving averages (ensure these are calculated first)
+        df['sma_short'] = df['close'].rolling(window=self.sma_short, min_periods=1).mean()
+        df['sma_long'] = df['close'].rolling(window=self.sma_long, min_periods=1).mean()
+        df['sma_20'] = df['close'].rolling(window=20, min_periods=1).mean()
+        df['sma_50'] = df['close'].rolling(window=50, min_periods=1).mean()
+        
+        # Volume features
+        vol_ma = df['volume'].rolling(window=20, min_periods=1).mean()
+        df['volume_ma_ratio'] = df['volume'] / vol_ma
+        
+        # RSI
+        rsi_indicator = ta.momentum.RSIIndicator(close=df['close'], window=14)
+        df['rsi'] = rsi_indicator.rsi()
+        
+        # MACD
+        macd_indicator = ta.trend.MACD(close=df['close'])
+        df['macd'] = macd_indicator.macd()
+        df['macd_signal'] = macd_indicator.macd_signal()
+        df['macd_diff'] = macd_indicator.macd_diff()
+        
+        # Bollinger Bands
+        bb_indicator = ta.volatility.BollingerBands(close=df['close'])
+        df['bb_width'] = (bb_indicator.bollinger_hband() - bb_indicator.bollinger_lband()) / bb_indicator.bollinger_mavg()
+        
+        # ADX
+        adx_indicator = ta.trend.ADXIndicator(high=df['high'], low=df['low'], close=df['close'])
+        df['adx'] = adx_indicator.adx()
+        
+        # Additional features for ML model
+        df['rolling_std_50'] = df['returns'].rolling(window=50, min_periods=1).std()
+        df['volume_std'] = df['volume'].rolling(window=20, min_periods=1).std()
+        df['rsi_divergence'] = df['rsi'].diff()
+        df['mom_14'] = ta.momentum.ROCIndicator(close=df['close'], window=14).roc()
+        df['mom_30'] = ta.momentum.ROCIndicator(close=df['close'], window=30).roc()
+        df['adx_pos'] = adx_indicator.adx_pos()
+        df['adx_neg'] = adx_indicator.adx_neg()
+        
+        # Clean up
+        df = df.replace([np.inf, -np.inf], np.nan)
+        df = df.fillna(method='ffill').fillna(method='bfill').fillna(0)
+        
+        return df
+        
+    except Exception as e:
+        raise ValueError(f"Error calculating indicators: {str(e)}")
+    
+    def calculate_advanced_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
+    """Calculate advanced technical indicators with proper error handling"""
+    try:
+        # Create a copy to avoid modifying the original
+        df = df.copy()
+        
+        # Ensure we have required columns and they're numeric
+        required_columns = ['high', 'low', 'close', 'volume']
+        for col in required_columns:
+            if col not in df.columns:
+                raise ValueError(f"Missing required column: {col}")
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+        
+        # Remove any rows with NaN values in required columns
+        df = df.dropna(subset=required_columns)
+        
+        # Calculate SMAs first
+        df['sma_20'] = df['close'].rolling(window=20, min_periods=1).mean()
+        df['sma_50'] = df['close'].rolling(window=50, min_periods=1).mean()
+        df['sma_20_50_ratio'] = df['sma_20'] / df['sma_50']
+        
+        # Price-based features with error handling
+        df['returns'] = df['close'].pct_change().fillna(0)
+        df['log_returns'] = np.log1p(df['returns'])
+        df['rolling_std_20'] = df['returns'].rolling(window=20, min_periods=1).std()
+        df['rolling_std_50'] = df['returns'].rolling(window=50, min_periods=1).std()
+        
+        # Volume features
+        df['volume_sma'] = df['volume'].rolling(window=20, min_periods=1).mean()
+        df['volume_ma_ratio'] = df['volume'] / df['volume_sma'].replace(0, np.nan)
+        df['volume_std'] = df['volume'].rolling(window=20, min_periods=1).std()
+        
         try:
-            df = df.copy()
-            
-            # Basic price features
-            df['returns'] = df['close'].pct_change()
-            df['log_returns'] = np.log1p(df['returns'])
-            df['rolling_std_20'] = df['returns'].rolling(window=20, min_periods=1).std()
-            
-            # Moving averages (ensure these are calculated first)
-            df['sma_short'] = df['close'].rolling(window=self.sma_short, min_periods=1).mean()
-            df['sma_long'] = df['close'].rolling(window=self.sma_long, min_periods=1).mean()
-            df['sma_20'] = df['close'].rolling(window=20, min_periods=1).mean()
-            df['sma_50'] = df['close'].rolling(window=50, min_periods=1).mean()
-            
-            # Volume features
-            vol_ma = df['volume'].rolling(window=20, min_periods=1).mean()
-            df['volume_ma_ratio'] = df['volume'] / vol_ma
-            
-            # RSI
-            rsi_indicator = ta.momentum.RSIIndicator(close=df['close'], window=14)
+            # RSI with error handling
+            rsi_indicator = ta.momentum.RSIIndicator(close=df['close'].replace(0, np.nan), window=14)
             df['rsi'] = rsi_indicator.rsi()
+            df['rsi_divergence'] = df['rsi'].diff()
+            
+            # Momentum
+            df['mom_14'] = ta.momentum.ROCIndicator(close=df['close'], window=14).roc()
+            df['mom_30'] = ta.momentum.ROCIndicator(close=df['close'], window=30).roc()
             
             # MACD
-            macd_indicator = ta.trend.MACD(close=df['close'])
+            macd_indicator = ta.trend.MACD(
+                close=df['close'],
+                window_fast=self.macd_fast,
+                window_slow=self.macd_slow,
+                window_sign=self.macd_signal
+            )
             df['macd'] = macd_indicator.macd()
             df['macd_signal'] = macd_indicator.macd_signal()
             df['macd_diff'] = macd_indicator.macd_diff()
             
-            # Bollinger Bands
+            # Bollinger Bands with error handling
             bb_indicator = ta.volatility.BollingerBands(close=df['close'])
-            df['bb_width'] = (bb_indicator.bollinger_hband() - bb_indicator.bollinger_lband()) / bb_indicator.bollinger_mavg()
+            bb_high = bb_indicator.bollinger_hband()
+            bb_low = bb_indicator.bollinger_lband()
+            bb_mid = bb_indicator.bollinger_mavg()
             
-            # ADX
-            adx_indicator = ta.trend.ADXIndicator(high=df['high'], low=df['low'], close=df['close'])
+            # Safely calculate BB metrics
+            df['bb_width'] = (bb_high - bb_low) / bb_mid.replace(0, np.nan)
+            df['bb_position'] = (df['close'] - bb_low) / (bb_high - bb_low).replace(0, np.nan)
+            
+            # ATR and ADX with error handling
+            df['atr'] = ta.volatility.AverageTrueRange(
+                high=df['high'],
+                low=df['low'],
+                close=df['close'],
+                window=14
+            ).average_true_range()
+            
+            adx_indicator = ta.trend.ADXIndicator(
+                high=df['high'],
+                low=df['low'],
+                close=df['close'],
+                window=14
+            )
             df['adx'] = adx_indicator.adx()
-            
-            # Additional features for ML model
-            df['rolling_std_50'] = df['returns'].rolling(window=50, min_periods=1).std()
-            df['volume_std'] = df['volume'].rolling(window=20, min_periods=1).std()
-            df['rsi_divergence'] = df['rsi'].diff()
-            df['mom_14'] = ta.momentum.ROCIndicator(close=df['close'], window=14).roc()
-            df['mom_30'] = ta.momentum.ROCIndicator(close=df['close'], window=30).roc()
             df['adx_pos'] = adx_indicator.adx_pos()
             df['adx_neg'] = adx_indicator.adx_neg()
             
-            # Clean up
-            df = df.replace([np.inf, -np.inf], np.nan)
-            df = df.fillna(method='ffill').fillna(method='bfill').fillna(0)
-            
-            return df
-            
         except Exception as e:
-            raise ValueError(f"Error calculating indicators: {str(e)}")
-
-    def calculate_advanced_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Calculate advanced technical indicators with proper error handling"""
-        try:
-            # Create a copy to avoid modifying the original
-            df = df.copy()
-            
-            # Ensure we have required columns and they're numeric
-            required_columns = ['high', 'low', 'close', 'volume']
-            for col in required_columns:
-                if col not in df.columns:
-                    raise ValueError(f"Missing required column: {col}")
-                df[col] = pd.to_numeric(df[col], errors='coerce')
-            
-            # Remove any rows with NaN values in required columns
-            df = df.dropna(subset=required_columns)
-            
-            # Calculate SMAs first
-            df['sma_20'] = df['close'].rolling(window=20, min_periods=1).mean()
-            df['sma_50'] = df['close'].rolling(window=50, min_periods=1).mean()
-            df['sma_20_50_ratio'] = df['sma_20'] / df['sma_50']
-            
-            # Price-based features with error handling
-            df['returns'] = df['close'].pct_change().fillna(0)
-            df['log_returns'] = np.log1p(df['returns'])
-            df['rolling_std_20'] = df['returns'].rolling(window=20, min_periods=1).std()
-            df['rolling_std_50'] = df['returns'].rolling(window=50, min_periods=1).std()
-            
-            # Volume features
-            df['volume_sma'] = df['volume'].rolling(window=20, min_periods=1).mean()
-            df['volume_ma_ratio'] = df['volume'] / df['volume_sma'].replace(0, np.nan)
-            df['volume_std'] = df['volume'].rolling(window=20, min_periods=1).std()
-            
-            try:
-                # RSI with error handling
-                rsi_indicator = ta.momentum.RSIIndicator(close=df['close'].replace(0, np.nan), window=14)
-                df['rsi'] = rsi_indicator.rsi()
-                df['rsi_divergence'] = df['rsi'].diff()
-                
-                # Momentum
-                df['mom_14'] = ta.momentum.ROCIndicator(close=df['close'], window=14).roc()
-                df['mom_30'] = ta.momentum.ROCIndicator(close=df['close'], window=30).roc()
-                
-                # MACD
-                macd_indicator = ta.trend.MACD(
-                    close=df['close'],
-                    window_fast=self.macd_fast,
-                    window_slow=self.macd_slow,
-                    window_sign=self.macd_signal
-                )
-                df['macd'] = macd_indicator.macd()
-                df['macd_signal'] = macd_indicator.macd_signal()
-                df['macd_diff'] = macd_indicator.macd_diff()
-                
-                # Bollinger Bands with error handling
-                bb_indicator = ta.volatility.BollingerBands(close=df['close'])
-                bb_high = bb_indicator.bollinger_hband()
-                bb_low = bb_indicator.bollinger_lband()
-                bb_mid = bb_indicator.bollinger_mavg()
-                
-                # Safely calculate BB metrics
-                df['bb_width'] = (bb_high - bb_low) / bb_mid.replace(0, np.nan)
-                df['bb_position'] = (df['close'] - bb_low) / (bb_high - bb_low).replace(0, np.nan)
-                
-                # ATR and ADX with error handling
-                df['atr'] = ta.volatility.AverageTrueRange(
-                    high=df['high'],
-                    low=df['low'],
-                    close=df['close'],
-                    window=14
-                ).average_true_range()
-                
-                adx_indicator = ta.trend.ADXIndicator(
-                    high=df['high'],
-                    low=df['low'],
-                    close=df['close'],
-                    window=14
-                )
-                df['adx'] = adx_indicator.adx()
-                df['adx_pos'] = adx_indicator.adx_pos()
-                df['adx_neg'] = adx_indicator.adx_neg()
-                
-            except Exception as e:
-                self.logger.error(f"Error calculating technical indicators: {str(e)}")
-                raise
-            
-            # Final cleanup
-            df = df.replace([np.inf, -np.inf], np.nan)
-            df = df.fillna(method='ffill').fillna(method='bfill').fillna(0)
-            
-            # Verify all required features are present and non-null
-            for col in df.columns:
-                if df[col].isnull().any():
-                    self.logger.warning(f"Column {col} contains null values after processing")
-            
-            return df
-            
-        except Exception as e:
-            self.logger.error(f"Error calculating advanced indicators: {str(e)}")
+            self.logger.error(f"Error calculating technical indicators: {str(e)}")
             raise
-
+        
+        # Final cleanup
+        df = df.replace([np.inf, -np.inf], np.nan)
+        df = df.fillna(method='ffill').fillna(method='bfill').fillna(0)
+        
+        # Verify all required features are present and non-null
+        for col in df.columns:
+            if df[col].isnull().any():
+                self.logger.warning(f"Column {col} contains null values after processing")
+        
+        return df
+        
+    except Exception as e:
+        self.logger.error(f"Error calculating advanced indicators: {str(e)}")
+        raise
+    
     def analyze_market_state(self, df: pd.DataFrame) -> dict:
-        """Analyze current market state with proper error handling"""
-        try:
-            if len(df) < self.sma_long:
-                return {
-                    'trend': 0,
-                    'volatility': 0,
-                    'volume_trend': 0
-                }
-
-            latest = df.iloc[-1]
-            
-            # Ensure we have necessary columns
-            required_columns = ['sma_short', 'sma_long', 'volume']
-            if not all(col in df.columns for col in required_columns):
-                self.logger.warning(f"Missing required columns for market analysis: {[col for col in required_columns if col not in df.columns]}")
-                return {
-                    'trend': 0,
-                    'volatility': 0,
-                    'volume_trend': 0
-                }
-
-            # Trend analysis
-            trend = 1 if latest['sma_short'] > latest['sma_long'] else -1
-
-            # Volatility analysis
-            volatility = df['returns'].rolling(window=20).std().iloc[-1]
-
-            # Volume analysis
-            volume_sma = df['volume'].rolling(window=20).mean().iloc[-1]
-            volume_trend = 1 if latest['volume'] > volume_sma else -1
-
-            return {
-                'trend': trend,
-                'volatility': volatility,
-                'volume_trend': volume_trend
-            }
-
-        except Exception as e:
-            self.logger.error(f"Error in market state analysis: {str(e)}")
+    """Analyze current market state with proper error handling"""
+    try:
+        if len(df) < self.sma_long:
             return {
                 'trend': 0,
                 'volatility': 0,
                 'volume_trend': 0
             }
-
-    def _check_divergence(self, price: pd.Series, indicator: pd.Series, window: int = 10) -> int:
-        """Check for price-indicator divergence"""
-        try:
-            price_change = price.diff(window).iloc[-1]
-            indicator_change = indicator.diff(window).iloc[-1]
-
-            if price_change > 0 and indicator_change < 0:
-                return -1  # Bearish divergence
-            elif price_change < 0 and indicator_change > 0:
-                return 1  # Bullish divergence
-            return 0
-        except:
-            return 0
-
-    def generate_enhanced_signals(self, df: pd.DataFrame, symbol: str) -> dict:
-        """Generate trading signals with core confidence values only"""
-        try:
-            if len(df) < self.sma_long:
-                return {'action': 'hold', 'confidence': 0.5}
-
-            df = self.calculate_advanced_indicators(df)
-            
-            # Get ML prediction (35% weight)
-            ml_confidence = 0.5
-            if self.is_initially_trained:
-                features = self.model_manager.prepare_features(df)
-                ml_signal = self.model_manager.predict(features)
-                ml_confidence = ml_signal['confidence']
-
-            # Get AI prediction (25% weight)
-            ai_confidence = 0.5
-            if self.ai_trained:
-                ai_signal = self.ai_enhancer.predict_next_movement(df)
-                ai_confidence = ai_signal['confidence']
-
-            # Technical analysis (40% weight)
-            tech_confidence = 0.5
-            market_state = self.analyze_market_state(df)
-            last_row = df.iloc[-1]
-
-            # Calculate technical signals
-            if market_state['trend'] > 0 and market_state['volume_trend'] > 0:
-                tech_confidence += 0.02
-            elif market_state['trend'] < 0 and market_state['volume_trend'] < 0:
-                tech_confidence -= 0.02
-
-            if all(x in last_row for x in ['macd', 'macd_signal']):
-                macd_strength = abs(last_row['macd'] - last_row['macd_signal']) / abs(last_row['macd_signal'])
-                volume_boost = min(1.5, last_row.get('volume_ma_ratio', 1))
-                volatility = df['close'].pct_change().rolling(20).std().iloc[-1]
-                volatility_factor = min(1.0, max(0.5, 1.0 - volatility * 10))
-                macd_impact = 0.02 * macd_strength * volume_boost * volatility_factor
-                
-                if last_row['macd'] > last_row['macd_signal']:
-                    tech_confidence += macd_impact
-                else:
-                    tech_confidence -= macd_impact
-
-            final_confidence = 0.5 + (
-                (ml_confidence - 0.5) * 0.25 +
-                (ai_confidence - 0.5) * 0.35 +
-                (tech_confidence - 0.5) * 0.40
-            ) * volatility_factor
-
-            final_confidence = max(0.45, min(0.55, final_confidence))
-                
-            if final_confidence < 0.47:
-                action = 'sell'
-            elif final_confidence > 0.52:
-                action = 'buy'
-            else:
-                action = 'hold'
-
-            # Determine signal icon
-            if final_confidence < 0.47:
-                icon = "🔴"
-            elif final_confidence > 0.52:
-                icon = "🟢"
-            else:
-                icon = "⚪"
-
-            # Log only the core confidences
-            self.logger.info(f"{symbol}: ML:{ml_confidence:.3f} AI:{ai_confidence:.3f} TECH:{tech_confidence:.3f} => {icon}{final_confidence:.3f}")
-            
-            return {'action': action, 'confidence': final_confidence}
-
-        except Exception as e:
-            self.logger.error(f"Error generating signals: {str(e)}")
-            return {'action': 'hold', 'confidence': 0.50}
-
-    def get_minimum_order_requirements(self, symbol: str) -> dict:
-        """Get minimum order requirements for a given symbol"""
-        try:
-            # Define minimum requirements for each symbol
-            requirements = {
-                'SOLUSD': {
-                    'min_vol': 0.1,      # Minimum volume
-                    'min_price': 0.01,   # Minimum price
-                    'price_decimals': 4,  # Price decimal places
-                    'vol_decimals': 8    # Volume decimal places
-                },
-                'AVAXUSD': {
-                    'min_vol': 0.1,
-                    'min_price': 0.01,
-                    'price_decimals': 4,
-                    'vol_decimals': 8
-                },
-                'XRPUSD': {
-                    'min_vol': 10.0,
-                    'min_price': 0.00001,
-                    'price_decimals': 5,
-                    'vol_decimals': 8
-                },
-                'XDGUSD': {
-                    'min_vol': 50.0,
-                    'min_price': 0.00001,
-                    'price_decimals': 6,
-                    'vol_decimals': 8
-                },
-                'SHIBUSD': {
-                    'min_vol': 50000.0,
-                    'min_price': 0.000001,
-                    'price_decimals': 8,
-                    'vol_decimals': 8
-                },
-                'PEPEUSD': {
-                    'min_vol': 50000.0,
-                    'min_price': 0.000001,
-                    'price_decimals': 8,
-                    'vol_decimals': 8
-                }
+    
+        latest = df.iloc[-1]
+        
+        # Ensure we have necessary columns
+        required_columns = ['sma_short', 'sma_long', 'volume']
+        if not all(col in df.columns for col in required_columns):
+            self.logger.warning(f"Missing required columns for market analysis: {[col for col in required_columns if col not in df.columns]}")
+            return {
+                'trend': 0,
+                'volatility': 0,
+                'volume_trend': 0
             }
+    
+        # Trend analysis
+        trend = 1 if latest['sma_short'] > latest['sma_long'] else -1
+    
+        # Volatility analysis
+        volatility = df['returns'].rolling(window=20).std().iloc[-1]
+    
+        # Volume analysis
+        volume_sma = df['volume'].rolling(window=20).mean().iloc[-1]
+        volume_trend = 1 if latest['volume'] > volume_sma else -1
+    
+        return {
+            'trend': trend,
+            'volatility': volatility,
+            'volume_trend': volume_trend
+        }
+    
+    except Exception as e:
+        self.logger.error(f"Error in market state analysis: {str(e)}")
+        return {
+            'trend': 0,
+            'volatility': 0,
+            'volume_trend': 0
+        }
+    
+    def _check_divergence(self, price: pd.Series, indicator: pd.Series, window: int = 10) -> int:
+    """Check for price-indicator divergence"""
+    try:
+        price_change = price.diff(window).iloc[-1]
+        indicator_change = indicator.diff(window).iloc[-1]
+    
+        if price_change > 0 and indicator_change < 0:
+            return -1  # Bearish divergence
+        elif price_change < 0 and indicator_change > 0:
+            return 1  # Bullish divergence
+        return 0
+    except:
+        return 0
+    
+    def generate_enhanced_signals(self, df: pd.DataFrame, symbol: str) -> dict:
+    """Generate trading signals with core confidence values only"""
+    try:
+        if len(df) < self.sma_long:
+            return {'action': 'hold', 'confidence': 0.5}
+    
+        df = self.calculate_advanced_indicators(df)
+        
+        # Get ML prediction (35% weight)
+        ml_confidence = 0.5
+        if self.is_initially_trained:
+            features = self.model_manager.prepare_features(df)
+            ml_signal = self.model_manager.predict(features)
+            ml_confidence = ml_signal['confidence']
+    
+        # Get AI prediction (25% weight)
+        ai_confidence = 0.5
+        if self.ai_trained:
+            ai_signal = self.ai_enhancer.predict_next_movement(df)
+            ai_confidence = ai_signal['confidence']
+    
+        # Technical analysis (40% weight)
+        tech_confidence = 0.5
+        market_state = self.analyze_market_state(df)
+        last_row = df.iloc[-1]
+    
+        # Calculate technical signals
+        if market_state['trend'] > 0 and market_state['volume_trend'] > 0:
+            tech_confidence += 0.02
+        elif market_state['trend'] < 0 and market_state['volume_trend'] < 0:
+            tech_confidence -= 0.02
+    
+        if all(x in last_row for x in ['macd', 'macd_signal']):
+            macd_strength = abs(last_row['macd'] - last_row['macd_signal']) / abs(last_row['macd_signal'])
+            volume_boost = min(1.5, last_row.get('volume_ma_ratio', 1))
+            volatility = df['close'].pct_change().rolling(20).std().iloc[-1]
+            volatility_factor = min(1.0, max(0.5, 1.0 - volatility * 10))
+            macd_impact = 0.02 * macd_strength * volume_boost * volatility_factor
             
-            if symbol not in requirements:
-                self.logger.error(f"No requirements defined for {symbol}")
-                # Return default requirements
-                return {
-                    'min_vol': 0.1,
-                    'min_price': 0.01,
-                    'price_decimals': 8,
-                    'vol_decimals': 8
-                }
-                
-            return requirements[symbol]
+            if last_row['macd'] > last_row['macd_signal']:
+                tech_confidence += macd_impact
+            else:
+                tech_confidence -= macd_impact
+    
+        final_confidence = 0.5 + (
+            (ml_confidence - 0.5) * 0.25 +
+            (ai_confidence - 0.5) * 0.35 +
+            (tech_confidence - 0.5) * 0.40
+        ) * volatility_factor
+    
+        final_confidence = max(0.45, min(0.55, final_confidence))
             
-        except Exception as e:
-            self.logger.error(f"Error getting minimum requirements for {symbol}: {str(e)}")
-            # Return safe default values
+        if final_confidence < 0.47:
+            action = 'sell'
+        elif final_confidence > 0.52:
+            action = 'buy'
+        else:
+            action = 'hold'
+    
+        # Determine signal icon
+        if final_confidence < 0.47:
+            icon = "🔴"
+        elif final_confidence > 0.52:
+            icon = "🟢"
+        else:
+            icon = "⚪"
+    
+        # Log only the core confidences
+        self.logger.info(f"{symbol}: ML:{ml_confidence:.3f} AI:{ai_confidence:.3f} TECH:{tech_confidence:.3f} => {icon}{final_confidence:.3f}")
+        
+        return {'action': action, 'confidence': final_confidence}
+    
+    except Exception as e:
+        self.logger.error(f"Error generating signals: {str(e)}")
+        return {'action': 'hold', 'confidence': 0.50}
+    
+    def get_minimum_order_requirements(self, symbol: str) -> dict:
+    """Get minimum order requirements for a given symbol"""
+    try:
+        # Define minimum requirements for each symbol
+        requirements = {
+            'SOLUSD': {
+                'min_vol': 0.1,      # Minimum volume
+                'min_price': 0.01,   # Minimum price
+                'price_decimals': 4,  # Price decimal places
+                'vol_decimals': 8    # Volume decimal places
+            },
+            'AVAXUSD': {
+                'min_vol': 0.1,
+                'min_price': 0.01,
+                'price_decimals': 4,
+                'vol_decimals': 8
+            },
+            'XRPUSD': {
+                'min_vol': 10.0,
+                'min_price': 0.00001,
+                'price_decimals': 5,
+                'vol_decimals': 8
+            },
+            'XDGUSD': {
+                'min_vol': 50.0,
+                'min_price': 0.00001,
+                'price_decimals': 6,
+                'vol_decimals': 8
+            },
+            'SHIBUSD': {
+                'min_vol': 50000.0,
+                'min_price': 0.000001,
+                'price_decimals': 8,
+                'vol_decimals': 8
+            },
+            'PEPEUSD': {
+                'min_vol': 50000.0,
+                'min_price': 0.000001,
+                'price_decimals': 8,
+                'vol_decimals': 8
+            }
+        }
+        
+        if symbol not in requirements:
+            self.logger.error(f"No requirements defined for {symbol}")
+            # Return default requirements
             return {
                 'min_vol': 0.1,
                 'min_price': 0.01,
                 'price_decimals': 8,
                 'vol_decimals': 8
             }
-
-    async def train_ai_models(self, historical_data: pd.DataFrame):
-        """Train the AI models with historical data"""
-        try:
-            self.logger.info("Training AI models...")
             
-            # Prepare sequence data
-            X, y = self.ai_enhancer.prepare_sequence_data(historical_data)
-            
-            if len(X) < 1000:  # Minimum required samples
-                self.logger.warning("Insufficient data for AI training")
-                return False
-            
-            # Split data
-            train_size = int(len(X) * 0.8)
-            X_train, X_test = X[:train_size], X[train_size:]
-            y_train, y_test = y[:train_size], y[train_size:]
-            
-            # Build and train LSTM
-            self.ai_enhancer.lstm_model = self.ai_enhancer.build_lstm_model()
-            self.ai_enhancer.lstm_model.fit(
-                X_train, y_train,
-                epochs=10,
-                batch_size=32,
-                validation_data=(X_test, y_test),
-                verbose=1
-            )
-            
-            # Build and train Transformer
-            self.ai_enhancer.transformer_model = self.ai_enhancer.build_transformer_model()
-            self.ai_enhancer.transformer_model.fit(
-                X_train, y_train,
-                epochs=10,
-                batch_size=32,
-                validation_data=(X_test, y_test),
-                verbose=1
-            )
-            
-            self.ai_trained = True
-            self.logger.info("AI models trained successfully")
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"Error training AI models: {str(e)}")
-            return False
-
-    def format_order_quantity(self, symbol: str, quantity: float) -> str:
-        """Format the order quantity according to symbol requirements"""
-        try:
-            requirements = self.get_minimum_order_requirements(symbol)
-            decimals = requirements['vol_decimals']
-            # Format with required decimal places and remove trailing zeros
-            return f"{quantity:.{decimals}f}".rstrip('0').rstrip('.')
-        except Exception as e:
-            self.logger.error(f"Error formatting quantity for {symbol}: {str(e)}")
-            return f"{quantity:.8f}".rstrip('0').rstrip('.')  # Safe default
-
-    def format_order_price(self, symbol: str, price: float) -> str:
-        """Format the order price according to symbol requirements"""
-        try:
-            requirements = self.get_minimum_order_requirements(symbol)
-            decimals = requirements['price_decimals']
-            # Format with required decimal places and remove trailing zeros
-            return f"{price:.{decimals}f}".rstrip('0').rstrip('.')
-        except Exception as e:
-            self.logger.error(f"Error formatting price for {symbol}: {str(e)}")
-            return f"{price:.8f}".rstrip('0').rstrip('.')  # Safe default
-
-    def normalize_symbol(self, symbol: str) -> str:
-        """Normalize symbol format for consistent comparison"""
-        # Remove common separators and standardize
-        return symbol.replace('/', '').replace('-', '').upper()
-
-    def format_price_for_log(self, symbol: str, price: float) -> str:
-        """Format price with appropriate decimals for logging"""
-        if price is None:
-            return "N/A"
-            
-        # Define formatting by symbol
-        if symbol in ['SHIBUSD', 'PEPEUSD']:
-            return f"${price:.8f}"  # Show 8 decimals for very small value coins
-        elif symbol == 'XDGUSD':
-            return f"${price:.6f}"  # 6 decimals for DOGE
-        elif symbol == 'XRPUSD':
-            return f"${price:.5f}"  # 5 decimals for XRP
-        else:
-            return f"${price:.2f}"
-
-    async def execute_trade_with_risk_management(self, symbol: str, signal: dict, price: float):
-        """Simulate trade execution using real market prices"""
-        try:
-            # Validate price
-            if not price or price <= 0:
-                self.logger.error(f"Invalid price for {symbol}: {price}")
-                return None
+        return requirements[symbol]
         
-            # Calculate position size using demo balance
-            position_size = self.calculate_position_size(symbol, signal)
-            if position_size <= 0:
-                return None
-                
-            # Get minimum requirements for the symbol
-            requirements = self.get_minimum_order_requirements(symbol)
-            min_volume = requirements['min_vol']
+    except Exception as e:
+        self.logger.error(f"Error getting minimum requirements for {symbol}: {str(e)}")
+        # Return safe default values
+        return {
+            'min_vol': 0.1,
+            'min_price': 0.01,
+            'price_decimals': 8,
+            'vol_decimals': 8
+        }
+    
+    async def train_ai_models(self, historical_data: pd.DataFrame):
+    """Train the AI models with historical data"""
+    try:
+        self.logger.info("Training AI models...")
+        
+        # Prepare sequence data
+        X, y = self.ai_enhancer.prepare_sequence_data(historical_data)
+        
+        if len(X) < 1000:  # Minimum required samples
+            self.logger.warning("Insufficient data for AI training")
+            return False
+        
+        # Split data
+        train_size = int(len(X) * 0.8)
+        X_train, X_test = X[:train_size], X[train_size:]
+        y_train, y_test = y[:train_size], y[train_size:]
+        
+        # Build and train LSTM
+        self.ai_enhancer.lstm_model = self.ai_enhancer.build_lstm_model()
+        self.ai_enhancer.lstm_model.fit(
+            X_train, y_train,
+            epochs=10,
+            batch_size=32,
+            validation_data=(X_test, y_test),
+            verbose=1
+        )
+        
+        # Build and train Transformer
+        self.ai_enhancer.transformer_model = self.ai_enhancer.build_transformer_model()
+        self.ai_enhancer.transformer_model.fit(
+            X_train, y_train,
+            epochs=10,
+            batch_size=32,
+            validation_data=(X_test, y_test),
+            verbose=1
+        )
+        
+        self.ai_trained = True
+        self.logger.info("AI models trained successfully")
+        return True
+        
+    except Exception as e:
+        self.logger.error(f"Error training AI models: {str(e)}")
+        return False
+    
+    def format_order_quantity(self, symbol: str, quantity: float) -> str:
+    """Format the order quantity according to symbol requirements"""
+    try:
+        requirements = self.get_minimum_order_requirements(symbol)
+        decimals = requirements['vol_decimals']
+        # Format with required decimal places and remove trailing zeros
+        return f"{quantity:.{decimals}f}".rstrip('0').rstrip('.')
+    except Exception as e:
+        self.logger.error(f"Error formatting quantity for {symbol}: {str(e)}")
+        return f"{quantity:.8f}".rstrip('0').rstrip('.')  # Safe default
+    
+    def format_order_price(self, symbol: str, price: float) -> str:
+    """Format the order price according to symbol requirements"""
+    try:
+        requirements = self.get_minimum_order_requirements(symbol)
+        decimals = requirements['price_decimals']
+        # Format with required decimal places and remove trailing zeros
+        return f"{price:.{decimals}f}".rstrip('0').rstrip('.')
+    except Exception as e:
+        self.logger.error(f"Error formatting price for {symbol}: {str(e)}")
+        return f"{price:.8f}".rstrip('0').rstrip('.')  # Safe default
+    
+    def normalize_symbol(self, symbol: str) -> str:
+    """Normalize symbol format for consistent comparison"""
+    # Remove common separators and standardize
+    return symbol.replace('/', '').replace('-', '').upper()
+    
+    def format_price_for_log(self, symbol: str, price: float) -> str:
+    """Format price with appropriate decimals for logging"""
+    if price is None:
+        return "N/A"
+        
+    # Define formatting by symbol
+    if symbol in ['SHIBUSD', 'PEPEUSD']:
+        return f"${price:.8f}"  # Show 8 decimals for very small value coins
+    elif symbol == 'XDGUSD':
+        return f"${price:.6f}"  # 6 decimals for DOGE
+    elif symbol == 'XRPUSD':
+        return f"${price:.5f}"  # 5 decimals for XRP
+    else:
+        return f"${price:.2f}"
+    
+    async def execute_trade_with_risk_management(self, symbol: str, signal: dict, price: float):
+    """Simulate trade execution using real market prices"""
+    try:
+        # Validate price
+        if not price or price <= 0:
+            self.logger.error(f"Invalid price for {symbol}: {price}")
+            return None
+    
+        # Calculate position size using demo balance
+        position_size = self.calculate_position_size(symbol, signal)
+        if position_size <= 0:
+            return None
             
-            # SELL LOGIC
-            if signal['action'] == 'sell':
-                if symbol in self.demo_positions:
-                    position = self.demo_positions[symbol]
-                    quantity = position['volume']
-                    
-                    # Ensure minimum volume
-                    if quantity < min_volume:
-                        self.logger.warning(f"Position size {quantity} below minimum {min_volume}")
-                        return None
-                    
-                    # Calculate sale value
-                    sale_value = quantity * price
-                    
-                    # Update balances
-                    self.demo_balance['ZUSD'] += sale_value
-                    self.demo_balance[symbol] = 0
-                    del self.demo_positions[symbol]
-                    
-                    # Record trade
-                    trade = {
-                        'timestamp': datetime.now(),
-                        'symbol': symbol,
-                        'type': 'sell',
-                        'price': price,
-                        'quantity': quantity,
-                        'value': sale_value,
-                        'balance_after': self.demo_balance['ZUSD']
-                    }
-                    self.trade_history.append(trade)
-                    
-                    # Update portfolio history
-                    self.portfolio_history.append({
-                        'timestamp': datetime.now(),
-                        'balance': self.demo_balance['ZUSD'],
-                        'equity': self.calculate_total_equity()
-                    })
-                    
-                    self.logger.info(f"Demo SELL executed: {quantity} {symbol} @ ${price}")
-                    return {'status': 'success', 'trade': trade}
-                        
-            # BUY LOGIC  
-            elif signal['action'] == 'buy':
-                quantity = position_size / price
+        # Get minimum requirements for the symbol
+        requirements = self.get_minimum_order_requirements(symbol)
+        min_volume = requirements['min_vol']
+        
+        # SELL LOGIC
+        if signal['action'] == 'sell':
+            if symbol in self.demo_positions:
+                position = self.demo_positions[symbol]
+                quantity = position['volume']
                 
                 # Ensure minimum volume
                 if quantity < min_volume:
-                    quantity = min_volume
-                    position_size = quantity * price
-                
-                # Check if we have enough balance
-                if position_size > self.demo_balance['ZUSD']:
-                    self.logger.warning(f"Insufficient demo balance. Need ${position_size:.2f}, have ${self.demo_balance['ZUSD']:.2f}")
+                    self.logger.warning(f"Position size {quantity} below minimum {min_volume}")
                     return None
-                    
-                # Update balances
-                self.demo_balance['ZUSD'] -= position_size
-                self.demo_balance[symbol] = self.demo_balance.get(symbol, 0) + quantity
                 
-                # Record position
-                self.demo_positions[symbol] = {
-                    'volume': quantity,
-                    'entry_price': price,
-                    'entry_time': datetime.now(),
-                    'high_price': price
-                }
+                # Calculate sale value
+                sale_value = quantity * price
+                
+                # Update balances
+                self.demo_balance['ZUSD'] += sale_value
+                self.demo_balance[symbol] = 0
+                del self.demo_positions[symbol]
                 
                 # Record trade
                 trade = {
                     'timestamp': datetime.now(),
                     'symbol': symbol,
-                    'type': 'buy',
+                    'type': 'sell',
                     'price': price,
                     'quantity': quantity,
-                    'value': position_size,
+                    'value': sale_value,
                     'balance_after': self.demo_balance['ZUSD']
                 }
                 self.trade_history.append(trade)
@@ -1559,1034 +1511,1082 @@ class DemoKrakenBot:
                     'equity': self.calculate_total_equity()
                 })
                 
-                self.logger.info(f"Demo BUY executed: {quantity} {symbol} @ ${price}")
+                self.logger.info(f"Demo SELL executed: {quantity} {symbol} @ ${price}")
                 return {'status': 'success', 'trade': trade}
                     
-            return None
-                
-        except Exception as e:
-            self.logger.error(f"Demo trade execution error: {e}")
-            return None
-
-    def update_trade_history(self, symbol: str, action: str, quantity: float):
-        """Update local tracking of positions based on executed trades"""
-        if symbol not in self.trade_history:
-            self.trade_history[symbol] = {'quantity': 0}
-        
-        if action == 'buy':
-            self.trade_history[symbol]['quantity'] += quantity
-        elif action == 'sell':
-            self.trade_history[symbol]['quantity'] -= quantity
-            self.trade_history[symbol]['quantity'] = max(0, self.trade_history[symbol]['quantity'])  # Prevent negative quantities
-
-    def sync_positions(self):
-        """Sync bot's understanding of positions with actual account data from Kraken"""
-        try:
-            positions = self.k.get_open_orders()  # Check Kraken's API for the correct method to get open orders/positions
-            for position in positions:
-                symbol = position['descr']['pair']
-                quantity = float(position['vol'])
-                self.update_trade_history(symbol, 'buy', quantity)  # Assuming all open orders are 'buy' for simplicity
-        except Exception as e:
-            self.logger.error(f"Failed to sync positions: {str(e)}")
-
-    async def monitor_positions(self):
-        """Monitor and manage demo positions with risk management"""
-        try:
-            current_time = datetime.now()
+        # BUY LOGIC  
+        elif signal['action'] == 'buy':
+            quantity = position_size / price
             
-            # Iterate through all demo positions
-            positions_to_close = []  # Track positions that need to be closed
+            # Ensure minimum volume
+            if quantity < min_volume:
+                quantity = min_volume
+                position_size = quantity * price
             
-            for symbol, position in self.demo_positions.items():
-                current_price = self.get_latest_price(symbol)
-                if not current_price:
-                    self.logger.warning(f"Could not get current price for {symbol}")
-                    continue
-                    
-                entry_price = position['entry_price']
-                quantity = position['volume']
+            # Check if we have enough balance
+            if position_size > self.demo_balance['ZUSD']:
+                self.logger.warning(f"Insufficient demo balance. Need ${position_size:.2f}, have ${self.demo_balance['ZUSD']:.2f}")
+                return None
                 
-                # Calculate position metrics
-                position_value = quantity * current_price
-                unrealized_pnl = (current_price - entry_price) * quantity
-                pnl_percentage = ((current_price - entry_price) / entry_price) * 100
-                
-                # Update high price if we have a new high
-                if current_price > position['high_price']:
-                    position['high_price'] = current_price
-                
-                # Log position status
-                self.logger.info(f"\nPosition Update - {symbol}:")
-                self.logger.info(f"Quantity: {quantity:.8f}")
-                self.logger.info(f"Entry: ${entry_price:.8f}")
-                self.logger.info(f"Current: ${current_price:.8f}")
-                self.logger.info(f"P&L: ${unrealized_pnl:.2f} ({pnl_percentage:.2f}%)")
-                
-                # Check take profit
-                if pnl_percentage >= self.take_profit_pct * 100:
-                    self.logger.info(f"Take profit triggered for {symbol} at {pnl_percentage:.2f}%")
-                    positions_to_close.append({
-                        'symbol': symbol,
-                        'reason': 'take_profit',
-                        'price': current_price
-                    })
-                    continue
-                
-                # Check stop loss
-                if pnl_percentage <= -self.stop_loss_pct * 100:
-                    self.logger.info(f"Stop loss triggered for {symbol} at {pnl_percentage:.2f}%")
-                    positions_to_close.append({
-                        'symbol': symbol,
-                        'reason': 'stop_loss',
-                        'price': current_price
-                    })
-                    continue
-                
-                # Check trailing stop
-                if pnl_percentage > 0:  # Only check trailing stop if we're in profit
-                    highest_price = position['high_price']
-                    trailing_stop_price = highest_price * (1 - self.trailing_stop_pct)
-                    
-                    if current_price < trailing_stop_price:
-                        self.logger.info(f"Trailing stop triggered for {symbol} at ${current_price:.8f}")
-                        positions_to_close.append({
-                            'symbol': symbol,
-                            'reason': 'trailing_stop',
-                            'price': current_price
-                        })
-                        continue
-                
-                # Check maximum drawdown
-                if pnl_percentage <= -self.max_drawdown * 100:
-                    self.logger.info(f"Maximum drawdown triggered for {symbol} at {pnl_percentage:.2f}%")
-                    positions_to_close.append({
-                        'symbol': symbol,
-                        'reason': 'max_drawdown',
-                        'price': current_price
-                    })
-                    continue
-                    
-            # Close positions that triggered risk management rules
-            for close_order in positions_to_close:
-                symbol = close_order['symbol']
-                await self.execute_trade_with_risk_management(
-                    symbol=symbol,
-                    signal={'action': 'sell', 'confidence': 1.0},
-                    price=close_order['price']
-                )
-                
-            # Update portfolio history
-            total_equity = self.calculate_total_equity()
-            self.portfolio_history.append({
-                'timestamp': current_time,
-                'balance': self.demo_balance['ZUSD'],
-                'equity': total_equity
-            })
+            # Update balances
+            self.demo_balance['ZUSD'] -= position_size
+            self.demo_balance[symbol] = self.demo_balance.get(symbol, 0) + quantity
             
-        except Exception as e:
-            self.logger.error(f"Error monitoring positions: {str(e)}")
-            traceback.print_exc()
-    
-    async def initialize_position_tracking(self):
-        """Initialize demo position tracking"""
-        try:
-            # For demo bot, we start with no positions
-            self.demo_positions = {}
-            self.portfolio_history = [{
-                'timestamp': datetime.now(),
-                'balance': self.demo_balance['ZUSD'],
-                'equity': self.demo_balance['ZUSD']
-            }]
-            self.logger.info("Demo position tracking initialized")
-            return True
-        except Exception as e:
-            self.logger.error(f"Error initializing demo position tracking: {str(e)}")
-            return False
-
-    def setup_database(self):
-        """Set up SQLite database for storing trading data"""
-        try:
-            conn = sqlite3.connect(self.db_name)
-            c = conn.cursor()
-
-            # Create market data table
-            c.execute('''CREATE TABLE IF NOT EXISTS market_data
-                        (timestamp TEXT, symbol TEXT, price REAL,
-                        volume REAL, rsi REAL, macd REAL, trend INTEGER,
-                        volatility REAL, close REAL)''')
-
-            conn.commit()
-            conn.close()
-
-        except Exception as e:
-            self.logger.error(f"Database setup error: {str(e)}")
-
-    def store_trade_data(self, trade_data: dict):
-        """Store trade information in database"""
-        try:
-            conn = sqlite3.connect(self.db_name)
-            c = conn.cursor()
-
-            # Store trade data
-            c.execute('''INSERT INTO trades VALUES
-                        (?,?,?,?,?,?,?)''', (
-                datetime.now().isoformat(),
-                trade_data['symbol'],
-                trade_data['action'],
-                trade_data['price'],
-                trade_data['quantity'],
-                trade_data.get('profit_loss', 0),
-                str(trade_data.get('market_conditions', {}))
-            ))
-
-            conn.commit()
-            conn.close()
-
-        except Exception as e:
-            self.logger.error(f"Error storing trade data: {str(e)}")
-
-    def store_market_data(self, symbol: str, df: pd.DataFrame):
-        """Store market data with support for both single symbol and batch operations"""
-        try:
-            conn = sqlite3.connect(self.db_name)
-
-            if isinstance(df.index, pd.DatetimeIndex):
-                df = df.reset_index()
-
-            # Handle both single symbol and batch data
-            if 'symbol' not in df.columns:
-                df['symbol'] = symbol
-
-            # Convert timestamp to string if needed
-            if 'timestamp' not in df.columns and 'timestamp' in df.index.names:
-                df['timestamp'] = df.index.get_level_values('timestamp').astype(str)
-            elif 'timestamp' not in df.columns:
-                df['timestamp'] = pd.Timestamp.now().isoformat()
-
-            # Prepare the required columns
-            market_data = pd.DataFrame({
-                'timestamp': df['timestamp'],
-                'symbol': df['symbol'] if 'symbol' in df.columns else symbol,
-                'close': df['close'],
-                'volume': df['volume'],
-                'rsi': df['rsi'],
-                'macd': df['macd'],
-                'trend': (df['sma_short'] > df['sma_long']).astype(int) if 'sma_short' in df.columns else 0,
-                'volatility': df['volatility'] if 'volatility' in df.columns else df['close'].pct_change().rolling(20).std()
-            })
-
-            # Store data in chunks to prevent memory issues
-            chunk_size = 1000
-            for i in range(0, len(market_data), chunk_size):
-                chunk = market_data.iloc[i:i + chunk_size]
-                chunk.to_sql('market_data', conn, if_exists='append', index=False)
-
-            self.logger.info(f"Stored {len(market_data)} rows of market data")
-            conn.close()
-
-        except Exception as e:
-            self.logger.error(f"Error storing market data: {str(e)}")
-
-    async def perform_initial_training(self):
-        """Perform initial model training including AI models"""
-        try:
-            self.logger.info("Starting initial model training...")
-            
-            # Get historical data for all symbols
-            all_data = []
-            for symbol in self.symbols:
-                try:
-                    df = await self.get_historical_data(symbol)
-                    if df is not None and not df.empty:
-                        df = self.calculate_indicators(df)
-                        all_data.append(df)
-                        self.logger.info(f"Collected {len(df)} samples for {symbol}")
-                except Exception as e:
-                    self.logger.error(f"Error collecting data for {symbol}: {str(e)}")
-
-            if not all_data:
-                self.logger.warning("No historical data available for training")
-                return False
-
-            # Combine all data
-            combined_df = pd.concat(all_data, ignore_index=True)
-            
-            # Train ML Model
-            try:
-                features_df = self.model_manager.prepare_features(combined_df)
-                labels = self.model_manager.create_labels(combined_df)
-                
-                training_success = self.model_manager.train_model(features_df, labels)
-                if training_success:
-                    self.is_initially_trained = True
-                    self.logger.info("ML model trained successfully")
-                else:
-                    self.logger.error("ML model training failed")
-                    return False
-            except Exception as e:
-                self.logger.error(f"Error in ML training: {str(e)}")
-                return False
-
-            # Train AI Models
-            try:
-                self.logger.info("Starting AI model training...")
-                # Prepare sequence data
-                X, y = self.ai_enhancer.prepare_sequence_data(combined_df)
-                
-                if len(X) < 1000:  # Minimum required samples
-                    self.logger.warning("Insufficient data for AI training")
-                    return False
-                
-                # Split data
-                train_size = int(len(X) * 0.8)
-                X_train, X_test = X[:train_size], X[train_size:]
-                y_train, y_test = y[:train_size], y[train_size:]
-                
-                # Build and train LSTM
-                self.logger.info("Training LSTM model...")
-                self.ai_enhancer.lstm_model = self.ai_enhancer.build_lstm_model()
-                self.ai_enhancer.lstm_model.fit(
-                    X_train, y_train,
-                    epochs=10,
-                    batch_size=32,
-                    validation_data=(X_test, y_test),
-                    verbose=1
-                )
-                
-                # Build and train Transformer
-                self.logger.info("Training Transformer model...")
-                self.ai_enhancer.transformer_model = self.ai_enhancer.build_transformer_model()
-                self.ai_enhancer.transformer_model.fit(
-                    X_train, y_train,
-                    epochs=10,
-                    batch_size=32,
-                    validation_data=(X_test, y_test),
-                    verbose=1
-                )
-                
-                self.ai_trained = True
-                self.logger.info("AI models trained successfully")
-                
-            except Exception as e:
-                self.logger.error(f"Error in AI training: {str(e)}")
-                self.logger.error(traceback.format_exc())
-                return False
-
-            return self.is_initially_trained and self.ai_trained
-            
-        except Exception as e:
-            self.logger.error(f"Error in initial training: {str(e)}")
-            return False
-
-    def calculate_advanced_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Calculate advanced technical indicators"""
-        try:
-            # Create a copy to avoid modifying the original
-            df = df.copy()
-            
-            # Ensure we have required columns
-            required_columns = ['high', 'low', 'close', 'volume']
-            for col in required_columns:
-                if col not in df.columns:
-                    raise ValueError(f"Missing required column: {col}")
-            
-            # Basic price and volume features
-            df['returns'] = df['close'].pct_change()
-            df['log_returns'] = np.log1p(df['returns'].fillna(0))
-            df['rolling_std_20'] = df['returns'].rolling(window=20, min_periods=1).std()
-            df['rolling_std_50'] = df['returns'].rolling(window=50, min_periods=1).std()
-            
-            # Volume features
-            df['volume_sma'] = df['volume'].rolling(window=20, min_periods=1).mean()
-            df['volume_ma_ratio'] = df['volume'] / df['volume_sma']
-            df['volume_std'] = df['volume'].rolling(window=20, min_periods=1).std()
-            
-            # Technical indicators
-            try:
-                # RSI
-                rsi_indicator = ta.momentum.RSIIndicator(close=df['close'], window=14)
-                df['rsi'] = rsi_indicator.rsi()
-                df['rsi_divergence'] = df['rsi'].diff()
-                
-                # Momentum
-                df['mom_14'] = ta.momentum.ROCIndicator(close=df['close'], window=14).roc()
-                df['mom_30'] = ta.momentum.ROCIndicator(close=df['close'], window=30).roc()
-                
-                # MACD
-                macd_indicator = ta.trend.MACD(close=df['close'])
-                df['macd'] = macd_indicator.macd()
-                df['macd_signal'] = macd_indicator.macd_signal()
-                df['macd_diff'] = macd_indicator.macd_diff()
-                
-                # Bollinger Bands
-                bb_indicator = ta.volatility.BollingerBands(close=df['close'])
-                df['bb_width'] = (bb_indicator.bollinger_hband() - bb_indicator.bollinger_lband()) / bb_indicator.bollinger_mavg()
-                df['bb_position'] = (df['close'] - bb_indicator.bollinger_lband()) / (bb_indicator.bollinger_hband() - bb_indicator.bollinger_lband())
-                
-                # ATR and ADX
-                df['atr'] = ta.volatility.AverageTrueRange(
-                    high=df['high'],
-                    low=df['low'],
-                    close=df['close']
-                ).average_true_range()
-                
-                adx_indicator = ta.trend.ADXIndicator(
-                    high=df['high'],
-                    low=df['low'],
-                    close=df['close']
-                )
-                df['adx'] = adx_indicator.adx()
-                df['adx_pos'] = adx_indicator.adx_pos()
-                df['adx_neg'] = adx_indicator.adx_neg()
-                
-            except Exception as e:
-                self.logger.error(f"Error calculating technical indicators: {str(e)}")
-                raise
-            
-            # Clean up any NaN or infinite values
-            df = df.replace([np.inf, -np.inf], np.nan)
-            df = df.fillna(method='ffill').fillna(method='bfill').fillna(0)
-            
-            return df
-            
-        except Exception as e:
-            self.logger.error(f"Error calculating advanced indicators: {str(e)}")
-            raise
-
-    async def update_dashboard(self):
-            """Update dashboard without IPython clear_output"""
-            try:
-                print("\n============= TRADING DASHBOARD =============")
-                print(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-
-                # Account Status
-                try:
-                    account = self.trading_client.get_account()
-                    print("\nAccount Status:")
-                    print(f"Portfolio Value: ${float(account.portfolio_value):,.2f}")
-                    print(f"Cash Balance: ${float(account.cash):,.2f}")
-                    print(f"Total P/L: ${float(account.portfolio_value) - 60.00:,.2f} ({((float(account.portfolio_value) - 60.00) / 60.00) * 100:.2f}%)")
-                except Exception as e:
-                    print("Account information temporarily unavailable")
-
-                # Positions
-                print("\nPositions:")
-                try:
-                    positions = self.trading_client.get_all_positions()
-                    if positions:
-                        for position in positions:
-                            print(f"\n{position.symbol}:")
-                            if hasattr(position, 'qty'):
-                                print(f"  Quantity: {position.qty}")
-                            if hasattr(position, 'current_price'):
-                                print(f"  Current Price: ${float(position.current_price):.4f}")
-                            if hasattr(position, 'unrealized_pl') and hasattr(position, 'unrealized_plpc'):
-                                print(f"  P/L: ${float(position.unrealized_pl):.2f} ({float(position.unrealized_plpc) * 100:.2f}%)")
-                    else:
-                        print("No active positions")
-                except Exception as e:
-                    print("Position information temporarily unavailable")
-
-                # Market Analysis
-                print("\nMarket Analysis:")
-                try:
-                    conn = sqlite3.connect(self.db_name)
-                    cursor = conn.cursor()
-
-                    for symbol in self.symbols:
-                        print(f"\n{symbol}:")
-                        try:
-                            # Get data point count for this symbol
-                            cursor.execute("SELECT COUNT(*) FROM market_data WHERE symbol=?", (symbol,))
-                            data_count = cursor.fetchone()[0]
-                            print(f"  Data Points Collected: {data_count}")
-                            print(f"  Minimum Required: {max(self.sma_long, self.min_training_data)}")
-
-                            # Get latest data for this symbol
-                            cursor.execute("""
-                                SELECT close, volume, rsi, macd, volatility
-                                FROM market_data
-                                WHERE symbol=?
-                                ORDER BY timestamp DESC
-                                LIMIT 1""", (symbol,))
-                            latest = cursor.fetchone()
-
-                            if latest:
-                                close, volume, rsi, macd, volatility = latest
-                                print(f"  Latest Price: ${float(close):.4f}")
-                                if rsi is not None:
-                                    print(f"  RSI: {float(rsi):.2f}")
-                                if volatility is not None:
-                                    print(f"  Volatility: {float(volatility):.4f}")
-
-                            print(f"  Allocation: {self.symbols[symbol]*100:.1f}%")
-
-                            # Display data collection status
-                            if data_count >= self.min_training_data:
-                                print("  Status: ✅ Sufficient data collected")
-                            else:
-                                print(f"  Status: 📊 Collecting data ({data_count}/{self.min_training_data})")
-
-                        except Exception as e:
-                            print(f"  Error getting data: {str(e)}")
-
-                    conn.close()
-                except Exception as e:
-                    print(f"Database access error: {str(e)}")
-
-                # Model Status
-                print("\nModel Status:")
-                if not self.is_initially_trained:
-                    time_elapsed = (datetime.now() - self.start_time).total_seconds() / 3600
-                    remaining = max(0, self.initial_training_hours - time_elapsed)
-                    print(f"Initial Training - {remaining:.1f} hours remaining")
-                else:
-                    print("Model: Trained and Active")
-
-                print("\n==========================================")
-
-            except Exception as e:
-                self.logger.error(f"Error updating dashboard: {str(e)}")
-                print("\nStatus: Bot Running - Limited Information Available")
-                print(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-
-    def get_account_balance(self):
-        """Get detailed account balance information"""
-        try:
-            balance = self.k.get_account_balance()
-            if isinstance(balance, pd.DataFrame):
-                balance_dict = balance.to_dict()['vol']
-            else:
-                balance_dict = balance
-
-            # Log all balances
-            self.logger.info("\n=== Account Balances ===")
-            for currency, amount in balance_dict.items():
-                self.logger.info(f"{currency}: {float(amount):.8f}")
-            
-            # Get USD balance specifically
-            usd_balance = float(balance_dict.get('ZUSD', 0))
-            self.logger.info(f"\nTrading Balance (USD): ${usd_balance:.2f}")
-            
-            return balance_dict
-            
-        except Exception as e:
-            self.logger.error(f"Error getting account balance: {str(e)}")
-            return {}
-        
-    async def collect_data_for_symbol(self, symbol: str):
-        """Collect data for a single symbol with proper error handling"""
-        try:
-            df = self.get_historical_data(symbol)
-            if df is not None:
-                df = self.calculate_advanced_indicators(df)
-                self.store_market_data(symbol, df)
-                return True
-            return False
-        except Exception as e:
-            self.logger.error(f"Error collecting data for {symbol}: {str(e)}")
-            return False
-
-    async def collect_all_data(self):
-        """Collect data for all symbols"""
-        results = {}
-        for symbol in self.symbols:
-            success = await self.collect_data_for_symbol(symbol)
-            results[symbol] = success
-        return results
-
-    def check_market_conditions(self, symbol: str, df: pd.DataFrame) -> bool:
-        """Enhanced market condition checks"""
-        try:
-            latest = df.iloc[-1]
-            
-            # Check volatility
-            volatility = df['close'].pct_change().rolling(20).std().iloc[-1]
-            if volatility > self.market_conditions['high_volatility']:
-                self.logger.warning(f"High volatility detected for {symbol}: {volatility:.2%}")
-                return False
-                
-            # Check volume/liquidity
-            if latest['volume'] < self.market_conditions['low_liquidity']:
-                self.logger.warning(f"Low liquidity for {symbol}")
-                return False
-                
-            # Calculate and check spread if available
-            if 'high' in df.columns and 'low' in df.columns:
-                spread = (latest['high'] - latest['low']) / latest['low']
-                if spread > self.market_conditions['excessive_spread']:
-                    self.logger.warning(f"Excessive spread for {symbol}: {spread:.2%}")
-                    return False
-                    
-            return True
-        except Exception as e:
-            self.logger.error(f"Error checking market conditions: {str(e)}")
-            return False
-
-    async def implement_trailing_stop(self, symbol: str, entry_price: float):
-        """Implement trailing stop loss"""
-        try:
-            highest_price = entry_price
-            while True:
-                current_price = float(self.trading_client.get_latest_trade(symbol).price)
-                
-                if current_price > highest_price:
-                    highest_price = current_price
-                    trailing_stop = highest_price * (1 - self.trailing_stop_pct)
-                
-                if current_price < trailing_stop:
-                    self.logger.info(f"Trailing stop triggered for {symbol} at {current_price}")
-                    await self.close_position(symbol)
-                    break
-                    
-                await asyncio.sleep(1)
-        except Exception as e:
-            self.logger.error(f"Error in trailing stop: {str(e)}")
-
-    def calculate_position_size(self, symbol: str, signal: dict) -> float:
-        try:
-            # Get current price from price feed
-            price = self.get_latest_price(symbol)
-            if price is None or price <= 0:
-                self.logger.error("Invalid price")
-                return 0
-                
-            # For demo bot, use demo balance instead of Kraken API
-            total_usd_balance = self.demo_balance['ZUSD']
-            
-            if total_usd_balance < self.min_zusd_balance:
-                self.logger.warning(f"Balance ${total_usd_balance} below minimum ${self.min_zusd_balance}")
-                return 0
-                
-            # Calculate position size based on allocation
-            allocation = self.symbols[symbol]
-            position_size = min(
-                total_usd_balance * allocation,
-                total_usd_balance * self.max_position_size
-            )
-            
-            # Ensure minimum position size
-            if position_size < self.min_position_value:
-                self.logger.warning(f"Position size ${position_size:.2f} below minimum ${self.min_position_value}")
-                return 0
-                
-            return position_size
-            
-        except Exception as e:
-            self.logger.error(f"Demo position size calculation error: {e}")
-            return 0
-            
-    async def retrain_models(self):
-        try:
-            # Collect new data
-            new_data = await self.collect_all_data()
-            
-            # Prepare features and labels
-            features_df = self.model_manager.prepare_features(new_data)
-            labels = self.model_manager.create_labels(new_data)
-            
-            # Retrain ML model
-            self.model_manager.train_model(features_df, labels)
-            
-            # Retrain AI models
-            await self.train_ai_models(new_data)
-            
-            return True
-        except Exception as e:
-            self.logger.error(f"Error in retraining: {str(e)}")
-            return False
-
-    def update_performance_metrics(self):
-        """Track and analyze performance metrics"""
-        try:
-            current_time = datetime.now()
-            
-            # Calculate daily P&L
-            daily_pnl = 0
-            positions = self.trading_client.get_all_positions()
-            for position in positions:
-                daily_pnl += float(position.unrealized_pl)
-            
-            # Update metrics
-            self.performance_metrics[current_time] = {
-                'pnl': daily_pnl,
-                'positions': len(positions),
-                'portfolio_value': float(self.trading_client.get_account().portfolio_value)
+            # Record position
+            self.demo_positions[symbol] = {
+                'volume': quantity,
+                'entry_price': price,
+                'entry_time': datetime.now(),
+                'high_price': price
             }
             
-            # Calculate drawdown
-            if len(self.performance_metrics) > 1:
-                peak = max(m['portfolio_value'] for m in self.performance_metrics.values())
-                current = self.performance_metrics[current_time]['portfolio_value']
-                drawdown = (peak - current) / peak
-                
-                if drawdown > self.max_drawdown:
-                    self.logger.warning(f"Maximum drawdown exceeded: {drawdown:.2%}")
-                    return False
+            # Record trade
+            trade = {
+                'timestamp': datetime.now(),
+                'symbol': symbol,
+                'type': 'buy',
+                'price': price,
+                'quantity': quantity,
+                'value': position_size,
+                'balance_after': self.demo_balance['ZUSD']
+            }
+            self.trade_history.append(trade)
             
-            return True
-        except Exception as e:
-            self.logger.error(f"Error updating performance metrics: {str(e)}")
-            return True
-
-    def get_latest_price(self, symbol: str) -> Optional[float]:
-        max_retries = 3
-        precision = {
-            'SHIBUSD': 8,
-            'PEPEUSD': 8,
-            'XDGUSD': 6,
-            'XRPUSD': 5,
-            'SOLUSD': 2,
-            'AVAXUSD': 2
-        }.get(symbol, 8)
-        
-        for attempt in range(max_retries):
-            try:
-                # Try OHLC first
-                ohlc = self.k.get_ohlc_data(symbol, interval=1)[0]
-                if ohlc is not None and not ohlc.empty:
-                    price = float(ohlc.iloc[-1]['close'])
-                    if price > 0:
-                        return round(price, precision)
-                        
-                # Fallback to trades
-                trades = self.k.get_recent_trades(symbol)[0]
-                if trades is not None and not trades.empty:
-                    price = float(trades.iloc[0]['price'])
-                    if price > 0:
-                        return round(price, precision)
-
-                if attempt < max_retries - 1:
-                    self.logger.warning(f"Retrying price fetch for {symbol}")
-                    time.sleep(1)
-
-            except Exception as e:
-                self.logger.error(f"Price fetch attempt {attempt+1} failed: {str(e)}")
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-
-        self.logger.error(f"Failed to get price for {symbol}")
+            # Update portfolio history
+            self.portfolio_history.append({
+                'timestamp': datetime.now(),
+                'balance': self.demo_balance['ZUSD'],
+                'equity': self.calculate_total_equity()
+            })
+            
+            self.logger.info(f"Demo BUY executed: {quantity} {symbol} @ ${price}")
+            return {'status': 'success', 'trade': trade}
+                
         return None
-
-    async def initialize_position_tracking(self):
-        """Initialize position tracking with proper async handling"""
-        try:
-            positions = self.k.get_open_positions()
-            for pos in positions:
-                symbol = pos['pair']
-                qty = float(pos['vol'])
-                price = float(pos['cost'])
-                self.position_tracker.update_position(symbol, qty, price)
-                self.logger.info(f"Loaded existing position: {symbol}, Quantity: {qty}, Entry: ${price}")
-            return True
-        except Exception as e:
-            self.logger.error(f"Error loading positions: {str(e)}")
-            return False
-
+            
+    except Exception as e:
+        self.logger.error(f"Demo trade execution error: {e}")
+        return None
+    
+    def update_trade_history(self, symbol: str, action: str, quantity: float):
+    """Update local tracking of positions based on executed trades"""
+    if symbol not in self.trade_history:
+        self.trade_history[symbol] = {'quantity': 0}
+    
+    if action == 'buy':
+        self.trade_history[symbol]['quantity'] += quantity
+    elif action == 'sell':
+        self.trade_history[symbol]['quantity'] -= quantity
+        self.trade_history[symbol]['quantity'] = max(0, self.trade_history[symbol]['quantity'])  # Prevent negative quantities
+    
+    def sync_positions(self):
+    """Sync bot's understanding of positions with actual account data from Kraken"""
+    try:
+        positions = self.k.get_open_orders()  # Check Kraken's API for the correct method to get open orders/positions
+        for position in positions:
+            symbol = position['descr']['pair']
+            quantity = float(position['vol'])
+            self.update_trade_history(symbol, 'buy', quantity)  # Assuming all open orders are 'buy' for simplicity
+    except Exception as e:
+        self.logger.error(f"Failed to sync positions: {str(e)}")
+    
     async def monitor_positions(self):
-        """Monitor positions with proper validation"""
-        try:
-            positions = self.k.get_open_positions()
+    """Monitor and manage demo positions with risk management"""
+    try:
+        current_time = datetime.now()
+        
+        # Iterate through all demo positions
+        positions_to_close = []  # Track positions that need to be closed
+        
+        for symbol, position in self.demo_positions.items():
+            current_price = self.get_latest_price(symbol)
+            if not current_price:
+                self.logger.warning(f"Could not get current price for {symbol}")
+                continue
+                
+            entry_price = position['entry_price']
+            quantity = position['volume']
             
-            # Reset position tracker if no positions exist
-            if not positions or len(positions) == 0:
-                self.position_tracker.positions = {}
-                return
+            # Calculate position metrics
+            position_value = quantity * current_price
+            unrealized_pnl = (current_price - entry_price) * quantity
+            pnl_percentage = ((current_price - entry_price) / entry_price) * 100
+            
+            # Update high price if we have a new high
+            if current_price > position['high_price']:
+                position['high_price'] = current_price
+            
+            # Log position status
+            self.logger.info(f"\nPosition Update - {symbol}:")
+            self.logger.info(f"Quantity: {quantity:.8f}")
+            self.logger.info(f"Entry: ${entry_price:.8f}")
+            self.logger.info(f"Current: ${current_price:.8f}")
+            self.logger.info(f"P&L: ${unrealized_pnl:.2f} ({pnl_percentage:.2f}%)")
+            
+            # Check take profit
+            if pnl_percentage >= self.take_profit_pct * 100:
+                self.logger.info(f"Take profit triggered for {symbol} at {pnl_percentage:.2f}%")
+                positions_to_close.append({
+                    'symbol': symbol,
+                    'reason': 'take_profit',
+                    'price': current_price
+                })
+                continue
+            
+            # Check stop loss
+            if pnl_percentage <= -self.stop_loss_pct * 100:
+                self.logger.info(f"Stop loss triggered for {symbol} at {pnl_percentage:.2f}%")
+                positions_to_close.append({
+                    'symbol': symbol,
+                    'reason': 'stop_loss',
+                    'price': current_price
+                })
+                continue
+            
+            # Check trailing stop
+            if pnl_percentage > 0:  # Only check trailing stop if we're in profit
+                highest_price = position['high_price']
+                trailing_stop_price = highest_price * (1 - self.trailing_stop_pct)
                 
-            for pos in positions:
-                # Validate position data
-                if not all(k in pos for k in ['pair', 'vol', 'price', 'cost']):
+                if current_price < trailing_stop_price:
+                    self.logger.info(f"Trailing stop triggered for {symbol} at ${current_price:.8f}")
+                    positions_to_close.append({
+                        'symbol': symbol,
+                        'reason': 'trailing_stop',
+                        'price': current_price
+                    })
                     continue
-                    
-                if float(pos['vol']) <= 0:
-                    continue
-                    
-                symbol = pos['pair']
-                qty = float(pos['vol'])
-                price = float(pos['cost']) / qty
+            
+            # Check maximum drawdown
+            if pnl_percentage <= -self.max_drawdown * 100:
+                self.logger.info(f"Maximum drawdown triggered for {symbol} at {pnl_percentage:.2f}%")
+                positions_to_close.append({
+                    'symbol': symbol,
+                    'reason': 'max_drawdown',
+                    'price': current_price
+                })
+                continue
                 
-                current_price = self.get_latest_price(symbol)
-                if current_price:
-                    pnl = ((current_price - price) / price) * 100
-                    self.logger.info(f"\nPosition Update - {symbol}:")
-                    self.logger.info(f"Quantity: {qty}")
-                    self.logger.info(f"Entry: ${price:.4f}")
-                    self.logger.info(f"Current: ${current_price:.4f}")
-                    self.logger.info(f"P&L: {pnl:.2f}%")
-                    
-                await asyncio.sleep(1)  # Rate limiting
-                
+        # Close positions that triggered risk management rules
+        for close_order in positions_to_close:
+            symbol = close_order['symbol']
+            await self.execute_trade_with_risk_management(
+                symbol=symbol,
+                signal={'action': 'sell', 'confidence': 1.0},
+                price=close_order['price']
+            )
+            
+        # Update portfolio history
+        total_equity = self.calculate_total_equity()
+        self.portfolio_history.append({
+            'timestamp': current_time,
+            'balance': self.demo_balance['ZUSD'],
+            'equity': total_equity
+        })
+        
+    except Exception as e:
+        self.logger.error(f"Error monitoring positions: {str(e)}")
+        traceback.print_exc()
+    
+    async def initialize_position_tracking(self):
+    """Initialize demo position tracking"""
+    try:
+        # For demo bot, we start with no positions
+        self.demo_positions = {}
+        self.portfolio_history = [{
+            'timestamp': datetime.now(),
+            'balance': self.demo_balance['ZUSD'],
+            'equity': self.demo_balance['ZUSD']
+        }]
+        self.logger.info("Demo position tracking initialized")
+        return True
+    except Exception as e:
+        self.logger.error(f"Error initializing demo position tracking: {str(e)}")
+        return False
+    
+    def setup_database(self):
+    """Set up SQLite database for storing trading data"""
+    try:
+        conn = sqlite3.connect(self.db_name)
+        c = conn.cursor()
+    
+        # Create market data table
+        c.execute('''CREATE TABLE IF NOT EXISTS market_data
+                    (timestamp TEXT, symbol TEXT, price REAL,
+                    volume REAL, rsi REAL, macd REAL, trend INTEGER,
+                    volatility REAL, close REAL)''')
+    
+        conn.commit()
+        conn.close()
+    
+    except Exception as e:
+        self.logger.error(f"Database setup error: {str(e)}")
+    
+    def store_trade_data(self, trade_data: dict):
+    """Store trade information in database"""
+    try:
+        conn = sqlite3.connect(self.db_name)
+        c = conn.cursor()
+    
+        # Store trade data
+        c.execute('''INSERT INTO trades VALUES
+                    (?,?,?,?,?,?,?)''', (
+            datetime.now().isoformat(),
+            trade_data['symbol'],
+            trade_data['action'],
+            trade_data['price'],
+            trade_data['quantity'],
+            trade_data.get('profit_loss', 0),
+            str(trade_data.get('market_conditions', {}))
+        ))
+    
+        conn.commit()
+        conn.close()
+    
+    except Exception as e:
+        self.logger.error(f"Error storing trade data: {str(e)}")
+    
+    def store_market_data(self, symbol: str, df: pd.DataFrame):
+    """Store market data with support for both single symbol and batch operations"""
+    try:
+        conn = sqlite3.connect(self.db_name)
+    
+        if isinstance(df.index, pd.DatetimeIndex):
+            df = df.reset_index()
+    
+        # Handle both single symbol and batch data
+        if 'symbol' not in df.columns:
+            df['symbol'] = symbol
+    
+        # Convert timestamp to string if needed
+        if 'timestamp' not in df.columns and 'timestamp' in df.index.names:
+            df['timestamp'] = df.index.get_level_values('timestamp').astype(str)
+        elif 'timestamp' not in df.columns:
+            df['timestamp'] = pd.Timestamp.now().isoformat()
+    
+        # Prepare the required columns
+        market_data = pd.DataFrame({
+            'timestamp': df['timestamp'],
+            'symbol': df['symbol'] if 'symbol' in df.columns else symbol,
+            'close': df['close'],
+            'volume': df['volume'],
+            'rsi': df['rsi'],
+            'macd': df['macd'],
+            'trend': (df['sma_short'] > df['sma_long']).astype(int) if 'sma_short' in df.columns else 0,
+            'volatility': df['volatility'] if 'volatility' in df.columns else df['close'].pct_change().rolling(20).std()
+        })
+    
+        # Store data in chunks to prevent memory issues
+        chunk_size = 1000
+        for i in range(0, len(market_data), chunk_size):
+            chunk = market_data.iloc[i:i + chunk_size]
+            chunk.to_sql('market_data', conn, if_exists='append', index=False)
+    
+        self.logger.info(f"Stored {len(market_data)} rows of market data")
+        conn.close()
+    
+    except Exception as e:
+        self.logger.error(f"Error storing market data: {str(e)}")
+    
+    async def perform_initial_training(self):
+    """Perform initial model training including AI models"""
+    try:
+        self.logger.info("Starting initial model training...")
+        
+        # Get historical data for all symbols
+        all_data = []
+        for symbol in self.symbols:
+            try:
+                df = await self.get_historical_data(symbol)
+                if df is not None and not df.empty:
+                    df = self.calculate_indicators(df)
+                    all_data.append(df)
+                    self.logger.info(f"Collected {len(df)} samples for {symbol}")
+            except Exception as e:
+                self.logger.error(f"Error collecting data for {symbol}: {str(e)}")
+    
+        if not all_data:
+            self.logger.warning("No historical data available for training")
+            return False
+    
+        # Combine all data
+        combined_df = pd.concat(all_data, ignore_index=True)
+        
+        # Train ML Model
+        try:
+            features_df = self.model_manager.prepare_features(combined_df)
+            labels = self.model_manager.create_labels(combined_df)
+            
+            training_success = self.model_manager.train_model(features_df, labels)
+            if training_success:
+                self.is_initially_trained = True
+                self.logger.info("ML model trained successfully")
+            else:
+                self.logger.error("ML model training failed")
+                return False
         except Exception as e:
-            self.logger.error(f"Error monitoring positions: {str(e)}")
-            self.position_tracker.positions = {}  # Reset on error
-
+            self.logger.error(f"Error in ML training: {str(e)}")
+            return False
+    
+        # Train AI Models
+        try:
+            self.logger.info("Starting AI model training...")
+            # Prepare sequence data
+            X, y = self.ai_enhancer.prepare_sequence_data(combined_df)
+            
+            if len(X) < 1000:  # Minimum required samples
+                self.logger.warning("Insufficient data for AI training")
+                return False
+            
+            # Split data
+            train_size = int(len(X) * 0.8)
+            X_train, X_test = X[:train_size], X[train_size:]
+            y_train, y_test = y[:train_size], y[train_size:]
+            
+            # Build and train LSTM
+            self.logger.info("Training LSTM model...")
+            self.ai_enhancer.lstm_model = self.ai_enhancer.build_lstm_model()
+            self.ai_enhancer.lstm_model.fit(
+                X_train, y_train,
+                epochs=10,
+                batch_size=32,
+                validation_data=(X_test, y_test),
+                verbose=1
+            )
+            
+            # Build and train Transformer
+            self.logger.info("Training Transformer model...")
+            self.ai_enhancer.transformer_model = self.ai_enhancer.build_transformer_model()
+            self.ai_enhancer.transformer_model.fit(
+                X_train, y_train,
+                epochs=10,
+                batch_size=32,
+                validation_data=(X_test, y_test),
+                verbose=1
+            )
+            
+            self.ai_trained = True
+            self.logger.info("AI models trained successfully")
+            
+        except Exception as e:
+            self.logger.error(f"Error in AI training: {str(e)}")
+            self.logger.error(traceback.format_exc())
+            return False
+    
+        return self.is_initially_trained and self.ai_trained
+        
+    except Exception as e:
+        self.logger.error(f"Error in initial training: {str(e)}")
+        return False
+    
+    def calculate_advanced_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
+    """Calculate advanced technical indicators"""
+    try:
+        # Create a copy to avoid modifying the original
+        df = df.copy()
+        
+        # Ensure we have required columns
+        required_columns = ['high', 'low', 'close', 'volume']
+        for col in required_columns:
+            if col not in df.columns:
+                raise ValueError(f"Missing required column: {col}")
+        
+        # Basic price and volume features
+        df['returns'] = df['close'].pct_change()
+        df['log_returns'] = np.log1p(df['returns'].fillna(0))
+        df['rolling_std_20'] = df['returns'].rolling(window=20, min_periods=1).std()
+        df['rolling_std_50'] = df['returns'].rolling(window=50, min_periods=1).std()
+        
+        # Volume features
+        df['volume_sma'] = df['volume'].rolling(window=20, min_periods=1).mean()
+        df['volume_ma_ratio'] = df['volume'] / df['volume_sma']
+        df['volume_std'] = df['volume'].rolling(window=20, min_periods=1).std()
+        
+        # Technical indicators
+        try:
+            # RSI
+            rsi_indicator = ta.momentum.RSIIndicator(close=df['close'], window=14)
+            df['rsi'] = rsi_indicator.rsi()
+            df['rsi_divergence'] = df['rsi'].diff()
+            
+            # Momentum
+            df['mom_14'] = ta.momentum.ROCIndicator(close=df['close'], window=14).roc()
+            df['mom_30'] = ta.momentum.ROCIndicator(close=df['close'], window=30).roc()
+            
+            # MACD
+            macd_indicator = ta.trend.MACD(close=df['close'])
+            df['macd'] = macd_indicator.macd()
+            df['macd_signal'] = macd_indicator.macd_signal()
+            df['macd_diff'] = macd_indicator.macd_diff()
+            
+            # Bollinger Bands
+            bb_indicator = ta.volatility.BollingerBands(close=df['close'])
+            df['bb_width'] = (bb_indicator.bollinger_hband() - bb_indicator.bollinger_lband()) / bb_indicator.bollinger_mavg()
+            df['bb_position'] = (df['close'] - bb_indicator.bollinger_lband()) / (bb_indicator.bollinger_hband() - bb_indicator.bollinger_lband())
+            
+            # ATR and ADX
+            df['atr'] = ta.volatility.AverageTrueRange(
+                high=df['high'],
+                low=df['low'],
+                close=df['close']
+            ).average_true_range()
+            
+            adx_indicator = ta.trend.ADXIndicator(
+                high=df['high'],
+                low=df['low'],
+                close=df['close']
+            )
+            df['adx'] = adx_indicator.adx()
+            df['adx_pos'] = adx_indicator.adx_pos()
+            df['adx_neg'] = adx_indicator.adx_neg()
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating technical indicators: {str(e)}")
+            raise
+        
+        # Clean up any NaN or infinite values
+        df = df.replace([np.inf, -np.inf], np.nan)
+        df = df.fillna(method='ffill').fillna(method='bfill').fillna(0)
+        
+        return df
+        
+    except Exception as e:
+        self.logger.error(f"Error calculating advanced indicators: {str(e)}")
+        raise
+    
+    async def update_dashboard(self):
+        """Update dashboard without IPython clear_output"""
+        try:
+            print("\n============= TRADING DASHBOARD =============")
+            print(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    
+            # Account Status
+            try:
+                account = self.trading_client.get_account()
+                print("\nAccount Status:")
+                print(f"Portfolio Value: ${float(account.portfolio_value):,.2f}")
+                print(f"Cash Balance: ${float(account.cash):,.2f}")
+                print(f"Total P/L: ${float(account.portfolio_value) - 60.00:,.2f} ({((float(account.portfolio_value) - 60.00) / 60.00) * 100:.2f}%)")
+            except Exception as e:
+                print("Account information temporarily unavailable")
+    
+            # Positions
+            print("\nPositions:")
+            try:
+                positions = self.trading_client.get_all_positions()
+                if positions:
+                    for position in positions:
+                        print(f"\n{position.symbol}:")
+                        if hasattr(position, 'qty'):
+                            print(f"  Quantity: {position.qty}")
+                        if hasattr(position, 'current_price'):
+                            print(f"  Current Price: ${float(position.current_price):.4f}")
+                        if hasattr(position, 'unrealized_pl') and hasattr(position, 'unrealized_plpc'):
+                            print(f"  P/L: ${float(position.unrealized_pl):.2f} ({float(position.unrealized_plpc) * 100:.2f}%)")
+                else:
+                    print("No active positions")
+            except Exception as e:
+                print("Position information temporarily unavailable")
+    
+            # Market Analysis
+            print("\nMarket Analysis:")
+            try:
+                conn = sqlite3.connect(self.db_name)
+                cursor = conn.cursor()
+    
+                for symbol in self.symbols:
+                    print(f"\n{symbol}:")
+                    try:
+                        # Get data point count for this symbol
+                        cursor.execute("SELECT COUNT(*) FROM market_data WHERE symbol=?", (symbol,))
+                        data_count = cursor.fetchone()[0]
+                        print(f"  Data Points Collected: {data_count}")
+                        print(f"  Minimum Required: {max(self.sma_long, self.min_training_data)}")
+    
+                        # Get latest data for this symbol
+                        cursor.execute("""
+                            SELECT close, volume, rsi, macd, volatility
+                            FROM market_data
+                            WHERE symbol=?
+                            ORDER BY timestamp DESC
+                            LIMIT 1""", (symbol,))
+                        latest = cursor.fetchone()
+    
+                        if latest:
+                            close, volume, rsi, macd, volatility = latest
+                            print(f"  Latest Price: ${float(close):.4f}")
+                            if rsi is not None:
+                                print(f"  RSI: {float(rsi):.2f}")
+                            if volatility is not None:
+                                print(f"  Volatility: {float(volatility):.4f}")
+    
+                        print(f"  Allocation: {self.symbols[symbol]*100:.1f}%")
+    
+                        # Display data collection status
+                        if data_count >= self.min_training_data:
+                            print("  Status: ✅ Sufficient data collected")
+                        else:
+                            print(f"  Status: 📊 Collecting data ({data_count}/{self.min_training_data})")
+    
+                    except Exception as e:
+                        print(f"  Error getting data: {str(e)}")
+    
+                conn.close()
+            except Exception as e:
+                print(f"Database access error: {str(e)}")
+    
+            # Model Status
+            print("\nModel Status:")
+            if not self.is_initially_trained:
+                time_elapsed = (datetime.now() - self.start_time).total_seconds() / 3600
+                remaining = max(0, self.initial_training_hours - time_elapsed)
+                print(f"Initial Training - {remaining:.1f} hours remaining")
+            else:
+                print("Model: Trained and Active")
+    
+            print("\n==========================================")
+    
+        except Exception as e:
+            self.logger.error(f"Error updating dashboard: {str(e)}")
+            print("\nStatus: Bot Running - Limited Information Available")
+            print(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    def get_account_balance(self):
+    """Get detailed account balance information"""
+    try:
+        balance = self.k.get_account_balance()
+        if isinstance(balance, pd.DataFrame):
+            balance_dict = balance.to_dict()['vol']
+        else:
+            balance_dict = balance
+    
+        # Log all balances
+        self.logger.info("\n=== Account Balances ===")
+        for currency, amount in balance_dict.items():
+            self.logger.info(f"{currency}: {float(amount):.8f}")
+        
+        # Get USD balance specifically
+        usd_balance = float(balance_dict.get('ZUSD', 0))
+        self.logger.info(f"\nTrading Balance (USD): ${usd_balance:.2f}")
+        
+        return balance_dict
+        
+    except Exception as e:
+        self.logger.error(f"Error getting account balance: {str(e)}")
+        return {}
+    
+    async def collect_data_for_symbol(self, symbol: str):
+    """Collect data for a single symbol with proper error handling"""
+    try:
+        df = self.get_historical_data(symbol)
+        if df is not None:
+            df = self.calculate_advanced_indicators(df)
+            self.store_market_data(symbol, df)
+            return True
+        return False
+    except Exception as e:
+        self.logger.error(f"Error collecting data for {symbol}: {str(e)}")
+        return False
+    
+    async def collect_all_data(self):
+    """Collect data for all symbols"""
+    results = {}
+    for symbol in self.symbols:
+        success = await self.collect_data_for_symbol(symbol)
+        results[symbol] = success
+    return results
+    
+    def check_market_conditions(self, symbol: str, df: pd.DataFrame) -> bool:
+    """Enhanced market condition checks"""
+    try:
+        latest = df.iloc[-1]
+        
+        # Check volatility
+        volatility = df['close'].pct_change().rolling(20).std().iloc[-1]
+        if volatility > self.market_conditions['high_volatility']:
+            self.logger.warning(f"High volatility detected for {symbol}: {volatility:.2%}")
+            return False
+            
+        # Check volume/liquidity
+        if latest['volume'] < self.market_conditions['low_liquidity']:
+            self.logger.warning(f"Low liquidity for {symbol}")
+            return False
+            
+        # Calculate and check spread if available
+        if 'high' in df.columns and 'low' in df.columns:
+            spread = (latest['high'] - latest['low']) / latest['low']
+            if spread > self.market_conditions['excessive_spread']:
+                self.logger.warning(f"Excessive spread for {symbol}: {spread:.2%}")
+                return False
+                
+        return True
+    except Exception as e:
+        self.logger.error(f"Error checking market conditions: {str(e)}")
+        return False
+    
+    async def implement_trailing_stop(self, symbol: str, entry_price: float):
+    """Implement trailing stop loss"""
+    try:
+        highest_price = entry_price
+        while True:
+            current_price = float(self.trading_client.get_latest_trade(symbol).price)
+            
+            if current_price > highest_price:
+                highest_price = current_price
+                trailing_stop = highest_price * (1 - self.trailing_stop_pct)
+            
+            if current_price < trailing_stop:
+                self.logger.info(f"Trailing stop triggered for {symbol} at {current_price}")
+                await self.close_position(symbol)
+                break
+                
+            await asyncio.sleep(1)
+    except Exception as e:
+        self.logger.error(f"Error in trailing stop: {str(e)}")
+    
+    def calculate_position_size(self, symbol: str, signal: dict) -> float:
+    try:
+        # Get current price from price feed
+        price = self.get_latest_price(symbol)
+        if price is None or price <= 0:
+            self.logger.error("Invalid price")
+            return 0
+            
+        # For demo bot, use demo balance instead of Kraken API
+        total_usd_balance = self.demo_balance['ZUSD']
+        
+        if total_usd_balance < self.min_zusd_balance:
+            self.logger.warning(f"Balance ${total_usd_balance} below minimum ${self.min_zusd_balance}")
+            return 0
+            
+        # Calculate position size based on allocation
+        allocation = self.symbols[symbol]
+        position_size = min(
+            total_usd_balance * allocation,
+            total_usd_balance * self.max_position_size
+        )
+        
+        # Ensure minimum position size
+        if position_size < self.min_position_value:
+            self.logger.warning(f"Position size ${position_size:.2f} below minimum ${self.min_position_value}")
+            return 0
+            
+        return position_size
+        
+    except Exception as e:
+        self.logger.error(f"Demo position size calculation error: {e}")
+        return 0
+        
+    async def retrain_models(self):
+    try:
+        # Collect new data
+        new_data = await self.collect_all_data()
+        
+        # Prepare features and labels
+        features_df = self.model_manager.prepare_features(new_data)
+        labels = self.model_manager.create_labels(new_data)
+        
+        # Retrain ML model
+        self.model_manager.train_model(features_df, labels)
+        
+        # Retrain AI models
+        await self.train_ai_models(new_data)
+        
+        return True
+    except Exception as e:
+        self.logger.error(f"Error in retraining: {str(e)}")
+        return False
+    
+    def update_performance_metrics(self):
+    """Track and analyze performance metrics"""
+    try:
+        current_time = datetime.now()
+        
+        # Calculate daily P&L
+        daily_pnl = 0
+        positions = self.trading_client.get_all_positions()
+        for position in positions:
+            daily_pnl += float(position.unrealized_pl)
+        
+        # Update metrics
+        self.performance_metrics[current_time] = {
+            'pnl': daily_pnl,
+            'positions': len(positions),
+            'portfolio_value': float(self.trading_client.get_account().portfolio_value)
+        }
+        
+        # Calculate drawdown
+        if len(self.performance_metrics) > 1:
+            peak = max(m['portfolio_value'] for m in self.performance_metrics.values())
+            current = self.performance_metrics[current_time]['portfolio_value']
+            drawdown = (peak - current) / peak
+            
+            if drawdown > self.max_drawdown:
+                self.logger.warning(f"Maximum drawdown exceeded: {drawdown:.2%}")
+                return False
+        
+        return True
+    except Exception as e:
+        self.logger.error(f"Error updating performance metrics: {str(e)}")
+        return True
+    
+    def get_latest_price(self, symbol: str) -> Optional[float]:
+    max_retries = 3
+    precision = {
+        'SHIBUSD': 8,
+        'PEPEUSD': 8,
+        'XDGUSD': 6,
+        'XRPUSD': 5,
+        'SOLUSD': 2,
+        'AVAXUSD': 2
+    }.get(symbol, 8)
+    
+    for attempt in range(max_retries):
+        try:
+            # Try OHLC first
+            ohlc = self.k.get_ohlc_data(symbol, interval=1)[0]
+            if ohlc is not None and not ohlc.empty:
+                price = float(ohlc.iloc[-1]['close'])
+                if price > 0:
+                    return round(price, precision)
+                    
+            # Fallback to trades
+            trades = self.k.get_recent_trades(symbol)[0]
+            if trades is not None and not trades.empty:
+                price = float(trades.iloc[0]['price'])
+                if price > 0:
+                    return round(price, precision)
+    
+            if attempt < max_retries - 1:
+                self.logger.warning(f"Retrying price fetch for {symbol}")
+                time.sleep(1)
+    
+        except Exception as e:
+            self.logger.error(f"Price fetch attempt {attempt+1} failed: {str(e)}")
+            if attempt < max_retries - 1:
+                time.sleep(1)
+    
+    self.logger.error(f"Failed to get price for {symbol}")
+    return None
+    
+    async def initialize_position_tracking(self):
+    """Initialize position tracking with proper async handling"""
+    try:
+        positions = self.k.get_open_positions()
+        for pos in positions:
+            symbol = pos['pair']
+            qty = float(pos['vol'])
+            price = float(pos['cost'])
+            self.position_tracker.update_position(symbol, qty, price)
+            self.logger.info(f"Loaded existing position: {symbol}, Quantity: {qty}, Entry: ${price}")
+        return True
+    except Exception as e:
+        self.logger.error(f"Error loading positions: {str(e)}")
+        return False
+    
+    async def monitor_positions(self):
+    """Monitor positions with proper validation"""
+    try:
+        positions = self.k.get_open_positions()
+        
+        # Reset position tracker if no positions exist
+        if not positions or len(positions) == 0:
+            self.position_tracker.positions = {}
+            return
+            
+        for pos in positions:
+            # Validate position data
+            if not all(k in pos for k in ['pair', 'vol', 'price', 'cost']):
+                continue
+                
+            if float(pos['vol']) <= 0:
+                continue
+                
+            symbol = pos['pair']
+            qty = float(pos['vol'])
+            price = float(pos['cost']) / qty
+            
+            current_price = self.get_latest_price(symbol)
+            if current_price:
+                pnl = ((current_price - price) / price) * 100
+                self.logger.info(f"\nPosition Update - {symbol}:")
+                self.logger.info(f"Quantity: {qty}")
+                self.logger.info(f"Entry: ${price:.4f}")
+                self.logger.info(f"Current: ${current_price:.4f}")
+                self.logger.info(f"P&L: {pnl:.2f}%")
+                
+            await asyncio.sleep(1)  # Rate limiting
+            
+    except Exception as e:
+        self.logger.error(f"Error monitoring positions: {str(e)}")
+        self.position_tracker.positions = {}  # Reset on error
+    
     def init_database(self):  # Changed method name to avoid conflict
-        """Initialize database tables"""
-        try:
-            conn = sqlite3.connect(self.db_name)
-            c = conn.cursor()
+    """Initialize database tables"""
+    try:
+        conn = sqlite3.connect(self.db_name)
+        c = conn.cursor()
     
-            # Create tables
-            c.execute('''CREATE TABLE IF NOT EXISTS demo_balance
-                        (currency TEXT PRIMARY KEY, amount REAL)''')
-                        
-            c.execute('''CREATE TABLE IF NOT EXISTS demo_positions
-                        (symbol TEXT PRIMARY KEY, volume REAL, entry_price REAL, 
-                        entry_time TEXT, high_price REAL)''')
-                        
-            c.execute('''CREATE TABLE IF NOT EXISTS demo_trade_history
-                        (timestamp TEXT, symbol TEXT, type TEXT, price REAL,
-                        quantity REAL, value REAL, balance_after REAL)''')
-                        
-            c.execute('''CREATE TABLE IF NOT EXISTS demo_portfolio_history
-                        (timestamp TEXT, balance REAL, equity REAL)''')
+        # Create tables
+        c.execute('''CREATE TABLE IF NOT EXISTS demo_balance
+                    (currency TEXT PRIMARY KEY, amount REAL)''')
+                    
+        c.execute('''CREATE TABLE IF NOT EXISTS demo_positions
+                    (symbol TEXT PRIMARY KEY, volume REAL, entry_price REAL, 
+                    entry_time TEXT, high_price REAL)''')
+                    
+        c.execute('''CREATE TABLE IF NOT EXISTS demo_trade_history
+                    (timestamp TEXT, symbol TEXT, type TEXT, price REAL,
+                    quantity REAL, value REAL, balance_after REAL)''')
+                    
+        c.execute('''CREATE TABLE IF NOT EXISTS demo_portfolio_history
+                    (timestamp TEXT, balance REAL, equity REAL)''')
     
-            # Initialize demo balance if empty
-            c.execute('SELECT COUNT(*) FROM demo_balance')
-            if c.fetchone()[0] == 0:
-                c.execute('INSERT INTO demo_balance VALUES (?, ?)',
-                         ('ZUSD', self.demo_balance['ZUSD']))
+        # Initialize demo balance if empty
+        c.execute('SELECT COUNT(*) FROM demo_balance')
+        if c.fetchone()[0] == 0:
+            c.execute('INSERT INTO demo_balance VALUES (?, ?)',
+                     ('ZUSD', self.demo_balance['ZUSD']))
     
-            conn.commit()
-            conn.close()
-            self.logger.info("Database initialized successfully")
-            
-        except Exception as e:
-            self.logger.error(f"Error initializing database: {str(e)}")
-            raise  # Re-raise to handle in __init__
-
+        conn.commit()
+        conn.close()
+        self.logger.info("Database initialized successfully")
+        
+    except Exception as e:
+        self.logger.error(f"Error initializing database: {str(e)}")
+        raise  # Re-raise to handle in __init__
+    
     def load_demo_state(self) -> None:
-        """Load demo bot state from database"""
-        try:
-            conn = sqlite3.connect(self.db_name)
-            c = conn.cursor()
+    """Load demo bot state from database"""
+    try:
+        conn = sqlite3.connect(self.db_name)
+        c = conn.cursor()
     
-            # Create tables if they don't exist
-            c.execute('''CREATE TABLE IF NOT EXISTS demo_balance
-                        (currency TEXT PRIMARY KEY, amount REAL)''')
-                        
-            c.execute('''CREATE TABLE IF NOT EXISTS demo_positions
-                        (symbol TEXT PRIMARY KEY, volume REAL, entry_price REAL, 
-                        entry_time TEXT, high_price REAL)''')
-                        
-            c.execute('''CREATE TABLE IF NOT EXISTS demo_trade_history
-                        (timestamp TEXT, symbol TEXT, type TEXT, price REAL,
-                        quantity REAL, value REAL, balance_after REAL)''')
-                        
-            c.execute('''CREATE TABLE IF NOT EXISTS demo_portfolio_history
-                        (timestamp TEXT, balance REAL, equity REAL)''')
+        # Create tables if they don't exist
+        c.execute('''CREATE TABLE IF NOT EXISTS demo_balance
+                    (currency TEXT PRIMARY KEY, amount REAL)''')
+                    
+        c.execute('''CREATE TABLE IF NOT EXISTS demo_positions
+                    (symbol TEXT PRIMARY KEY, volume REAL, entry_price REAL, 
+                    entry_time TEXT, high_price REAL)''')
+                    
+        c.execute('''CREATE TABLE IF NOT EXISTS demo_trade_history
+                    (timestamp TEXT, symbol TEXT, type TEXT, price REAL,
+                    quantity REAL, value REAL, balance_after REAL)''')
+                    
+        c.execute('''CREATE TABLE IF NOT EXISTS demo_portfolio_history
+                    (timestamp TEXT, balance REAL, equity REAL)''')
     
-            # Load balance data
-            c.execute('SELECT * FROM demo_balance')
-            balance_data = c.fetchall()
-            if balance_data:
-                self.demo_balance = {row[0]: row[1] for row in balance_data}
+        # Load balance data
+        c.execute('SELECT * FROM demo_balance')
+        balance_data = c.fetchall()
+        if balance_data:
+            self.demo_balance = {row[0]: row[1] for row in balance_data}
     
-            # Load positions
-            c.execute('SELECT * FROM demo_positions')
-            position_data = c.fetchall()
-            if position_data:
-                self.demo_positions = {}
-                for row in position_data:
-                    self.demo_positions[row[0]] = {
-                        'volume': row[1],
-                        'entry_price': row[2],
-                        'entry_time': datetime.fromisoformat(row[3]),
-                        'high_price': row[4]
-                    }
+        # Load positions
+        c.execute('SELECT * FROM demo_positions')
+        position_data = c.fetchall()
+        if position_data:
+            self.demo_positions = {}
+            for row in position_data:
+                self.demo_positions[row[0]] = {
+                    'volume': row[1],
+                    'entry_price': row[2],
+                    'entry_time': datetime.fromisoformat(row[3]),
+                    'high_price': row[4]
+                }
     
-            # Load trade history
-            c.execute('SELECT * FROM demo_trade_history')
-            trade_data = c.fetchall()
-            if trade_data:
-                self.trade_history = []
-                for row in trade_data:
-                    self.trade_history.append({
-                        'timestamp': datetime.fromisoformat(row[0]),
-                        'symbol': row[1],
-                        'type': row[2],
-                        'price': row[3],
-                        'quantity': row[4],
-                        'value': row[5],
-                        'balance_after': row[6]
-                    })
+        # Load trade history
+        c.execute('SELECT * FROM demo_trade_history')
+        trade_data = c.fetchall()
+        if trade_data:
+            self.trade_history = []
+            for row in trade_data:
+                self.trade_history.append({
+                    'timestamp': datetime.fromisoformat(row[0]),
+                    'symbol': row[1],
+                    'type': row[2],
+                    'price': row[3],
+                    'quantity': row[4],
+                    'value': row[5],
+                    'balance_after': row[6]
+                })
     
-            # Load portfolio history
-            c.execute('SELECT * FROM demo_portfolio_history ORDER BY timestamp DESC LIMIT 100')
-            portfolio_data = c.fetchall()
-            if portfolio_data:
-                self.portfolio_history = []
-                for row in portfolio_data:
-                    self.portfolio_history.append({
-                        'timestamp': datetime.fromisoformat(row[0]),
-                        'balance': row[1],
-                        'equity': row[2]
-                    })
+        # Load portfolio history
+        c.execute('SELECT * FROM demo_portfolio_history ORDER BY timestamp DESC LIMIT 100')
+        portfolio_data = c.fetchall()
+        if portfolio_data:
+            self.portfolio_history = []
+            for row in portfolio_data:
+                self.portfolio_history.append({
+                    'timestamp': datetime.fromisoformat(row[0]),
+                    'balance': row[1],
+                    'equity': row[2]
+                })
     
-            conn.close()
-            self.logger.info("Demo state loaded successfully")
-            
-            # Log current state
-            self.logger.info("\n=== Loaded Demo State ===")
-            self.logger.info(f"USD Balance: ${self.demo_balance['ZUSD']:.2f}")
-            self.logger.info(f"Active Positions: {len(self.demo_positions)}")
-            self.logger.info(f"Trade History: {len(self.trade_history)} trades")
-            self.logger.info(f"Portfolio History: {len(self.portfolio_history)} entries")
+        conn.close()
+        self.logger.info("Demo state loaded successfully")
+        
+        # Log current state
+        self.logger.info("\n=== Loaded Demo State ===")
+        self.logger.info(f"USD Balance: ${self.demo_balance['ZUSD']:.2f}")
+        self.logger.info(f"Active Positions: {len(self.demo_positions)}")
+        self.logger.info(f"Trade History: {len(self.trade_history)} trades")
+        self.logger.info(f"Portfolio History: {len(self.portfolio_history)} entries")
     
-        except Exception as e:
-            self.logger.error(f"Error loading demo state: {str(e)}")
+    except Exception as e:
+        self.logger.error(f"Error loading demo state: {str(e)}")
     
     def save_demo_state(self):
-        """Save current demo state to database"""
-        try:
-            conn = sqlite3.connect(self.db_name)
-            c = conn.cursor()
+    """Save current demo state to database"""
+    try:
+        conn = sqlite3.connect(self.db_name)
+        c = conn.cursor()
     
-            # Save current balance
-            c.execute('DELETE FROM demo_balance')
-            for currency, amount in self.demo_balance.items():
-                c.execute('INSERT INTO demo_balance VALUES (?, ?)',
-                         (currency, amount))
+        # Save current balance
+        c.execute('DELETE FROM demo_balance')
+        for currency, amount in self.demo_balance.items():
+            c.execute('INSERT INTO demo_balance VALUES (?, ?)',
+                     (currency, amount))
     
-            # Save positions
-            c.execute('DELETE FROM demo_positions')
-            for symbol, pos in self.demo_positions.items():
-                c.execute('INSERT INTO demo_positions VALUES (?, ?, ?, ?, ?)',
-                         (symbol, pos['volume'], pos['entry_price'],
-                          pos['entry_time'].isoformat(), pos['high_price']))
+        # Save positions
+        c.execute('DELETE FROM demo_positions')
+        for symbol, pos in self.demo_positions.items():
+            c.execute('INSERT INTO demo_positions VALUES (?, ?, ?, ?, ?)',
+                     (symbol, pos['volume'], pos['entry_price'],
+                      pos['entry_time'].isoformat(), pos['high_price']))
     
-            # Save trade history
-            c.execute('DELETE FROM demo_trade_history')
-            for trade in self.trade_history:
-                c.execute('''INSERT INTO demo_trade_history 
-                            VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                         (trade['timestamp'].isoformat(), trade['symbol'],
-                          trade['type'], trade['price'], trade['quantity'],
-                          trade['value'], trade['balance_after']))
+        # Save trade history
+        c.execute('DELETE FROM demo_trade_history')
+        for trade in self.trade_history:
+            c.execute('''INSERT INTO demo_trade_history 
+                        VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                     (trade['timestamp'].isoformat(), trade['symbol'],
+                      trade['type'], trade['price'], trade['quantity'],
+                      trade['value'], trade['balance_after']))
     
-            # Save portfolio history
-            c.execute('DELETE FROM demo_portfolio_history')
-            for entry in self.portfolio_history:
-                c.execute('INSERT INTO demo_portfolio_history VALUES (?, ?, ?)',
-                         (entry['timestamp'].isoformat(), entry['balance'],
-                          entry['equity']))
+        # Save portfolio history
+        c.execute('DELETE FROM demo_portfolio_history')
+        for entry in self.portfolio_history:
+            c.execute('INSERT INTO demo_portfolio_history VALUES (?, ?, ?)',
+                     (entry['timestamp'].isoformat(), entry['balance'],
+                      entry['equity']))
     
-            conn.commit()
-            conn.close()
-            self.logger.info("Demo state saved successfully")
+        conn.commit()
+        conn.close()
+        self.logger.info("Demo state saved successfully")
     
-        except Exception as e:
-            self.logger.error(f"Error saving demo state: {str(e)}")
-
+    except Exception as e:
+        self.logger.error(f"Error saving demo state: {str(e)}")
+    
     async def run(self):
-        """Main run loop for demo trading bot"""
-        cleanup_interval = 3600  # Cleanup every hour
-        last_cleanup = time.time()
+    """Main run loop for demo trading bot"""
+    cleanup_interval = 3600  # Cleanup every hour
+    last_cleanup = time.time()
+    
+    try:
+        self.logger.info("\n=== DEMO KRAKEN TRADING BOT STARTED ===")
+        self.logger.info(f"Starting Balance: ${self.demo_balance['ZUSD']:.2f}")
         
-        try:
-            self.logger.info("\n=== DEMO KRAKEN TRADING BOT STARTED ===")
-            self.logger.info(f"Starting Balance: ${self.demo_balance['ZUSD']:.2f}")
-            
-            # Initialize rate limiter
-            rate_limiter = RateLimiter(calls_per_second=0.5)  # 2 seconds between calls
-            
-            # Force initial training if not completed
-            if not self.training_completed:
-                self.logger.info("Performing initial model training...")
-                training_success = await self.perform_initial_training()
-                if not training_success:
-                    self.logger.error("Initial training failed!")
-                    return
-                self.logger.info("Initial training completed successfully!")
-                self.training_completed = True
-                self.is_initially_trained = True
+        # Initialize rate limiter
+        rate_limiter = RateLimiter(calls_per_second=0.5)  # 2 seconds between calls
+        
+        # Force initial training if not completed
+        if not self.training_completed:
+            self.logger.info("Performing initial model training...")
+            training_success = await self.perform_initial_training()
+            if not training_success:
+                self.logger.error("Initial training failed!")
+                return
+            self.logger.info("Initial training completed successfully!")
+            self.training_completed = True
+            self.is_initially_trained = True
     
-            # Initialize position tracking
-            await self.initialize_position_tracking()
+        # Initialize position tracking
+        await self.initialize_position_tracking()
     
-            while self.running:
-                try:
-                    current_time = time.time()
-                    
-                    # Check if cleanup is needed
-                    if current_time - last_cleanup > cleanup_interval:
-                        self.cleanup_old_data()
-                        last_cleanup = current_time
+        while self.running:
+            try:
+                current_time = time.time()
+                
+                # Check if cleanup is needed
+                if current_time - last_cleanup > cleanup_interval:
+                    self.cleanup_old_data()
+                    last_cleanup = current_time
     
-                    # Update metrics and save state
-                    metrics = self.get_portfolio_metrics()
-                    self.logger.info("\n=== Portfolio Status ===")
-                    self.logger.info(f"Current Equity: ${metrics['current_equity']:.2f}")
-                    self.logger.info(f"P&L: ${metrics['total_pnl']:.2f} ({metrics['pnl_percentage']:.2f}%)")
-                    self.save_demo_state()
+                # Update metrics and save state
+                metrics = self.get_portfolio_metrics()
+                self.logger.info("\n=== Portfolio Status ===")
+                self.logger.info(f"Current Equity: ${metrics['current_equity']:.2f}")
+                self.logger.info(f"P&L: ${metrics['total_pnl']:.2f} ({metrics['pnl_percentage']:.2f}%)")
+                self.save_demo_state()
     
-                    # Process each trading pair with rate limiting
-                    for symbol in self.symbols:
-                        await rate_limiter.wait()
-                        try:
-                            self.logger.info(f"\n--- Analyzing {symbol} ---")
-                            df = await self.get_historical_data(symbol)
+                # Process each trading pair with rate limiting
+                for symbol in self.symbols:
+                    await rate_limiter.wait()
+                    try:
+                        self.logger.info(f"\n--- Analyzing {symbol} ---")
+                        df = await self.get_historical_data(symbol)
+                        
+                        if df is not None and not df.empty:
+                            # Calculate indicators
+                            df = self.calculate_indicators(df)
                             
-                            if df is not None and not df.empty:
-                                # Calculate indicators
-                                df = self.calculate_indicators(df)
-                                
-                                # Generate trading signals
-                                signal = self.generate_enhanced_signals(df, symbol)
-                                
-                                current_price = df['close'].iloc[-1]
-                                self.logger.info(f"Current Price: ${self.format_price_for_log(symbol, current_price)}")
-                                self.logger.info(f"Signal: {signal['action'].upper()} (Confidence: {signal['confidence']:.3f})")
-                                
-                                # Execute trades if conditions are met
-                                if signal['action'] != 'hold':
-                                    # Check market conditions
-                                    if self.check_market_conditions(symbol, df):
-                                        # Calculate position size
-                                        position_size = self.calculate_position_size(symbol, signal)
+                            # Generate trading signals
+                            signal = self.generate_enhanced_signals(df, symbol)
+                            
+                            current_price = df['close'].iloc[-1]
+                            self.logger.info(f"Current Price: ${self.format_price_for_log(symbol, current_price)}")
+                            self.logger.info(f"Signal: {signal['action'].upper()} (Confidence: {signal['confidence']:.3f})")
+                            
+                            # Execute trades if conditions are met
+                            if signal['action'] != 'hold':
+                                # Check market conditions
+                                if self.check_market_conditions(symbol, df):
+                                    # Calculate position size
+                                    position_size = self.calculate_position_size(symbol, signal)
+                                    
+                                    if position_size >= self.min_position_value:
+                                        self.logger.info(f"Executing {signal['action']} signal for {symbol}")
+                                        self.logger.info(f"Position Size: ${position_size:.2f}")
                                         
-                                        if position_size >= self.min_position_value:
-                                            self.logger.info(f"Executing {signal['action']} signal for {symbol}")
-                                            self.logger.info(f"Position Size: ${position_size:.2f}")
-                                            
-                                            # Execute trade
-                                            trade_result = await self.execute_trade_with_risk_management(
-                                                symbol, signal, current_price
-                                            )
-                                            
-                                            if trade_result:
-                                                self.logger.info(f"Trade executed successfully for {symbol}")
-                                                # Update portfolio after trade
-                                                self.save_demo_state()
-                                            else:
-                                                self.logger.warning(f"Trade execution failed for {symbol}")
+                                        # Execute trade
+                                        trade_result = await self.execute_trade_with_risk_management(
+                                            symbol, signal, current_price
+                                        )
+                                        
+                                        if trade_result:
+                                            self.logger.info(f"Trade executed successfully for {symbol}")
+                                            # Update portfolio after trade
+                                            self.save_demo_state()
                                         else:
-                                            self.logger.info(f"Position size ${position_size:.2f} below minimum ${self.min_position_value}")
+                                            self.logger.warning(f"Trade execution failed for {symbol}")
                                     else:
-                                        self.logger.info(f"Market conditions not suitable for {symbol}")
+                                        self.logger.info(f"Position size ${position_size:.2f} below minimum ${self.min_position_value}")
                                 else:
-                                    self.logger.info(f"No action needed for {symbol}")
-                                        
-                        except Exception as e:
-                            self.logger.error(f"Error processing {symbol}: {str(e)}")
-                            continue
-                    
-                    # Monitor existing positions
-                    await self.monitor_positions()
-                    
-                    # Sleep for main loop interval
-                    self.logger.info("\nWaiting for next cycle...")
-                    await asyncio.sleep(150)  # 2.5 minute cycle
+                                    self.logger.info(f"Market conditions not suitable for {symbol}")
+                            else:
+                                self.logger.info(f"No action needed for {symbol}")
+                                    
+                    except Exception as e:
+                        self.logger.error(f"Error processing {symbol}: {str(e)}")
+                        continue
+                
+                # Monitor existing positions
+                await self.monitor_positions()
+                
+                # Sleep for main loop interval
+                self.logger.info("\nWaiting for next cycle...")
+                await asyncio.sleep(150)  # 2.5 minute cycle
     
-                except Exception as e:
-                    self.logger.error(f"Error in main loop: {str(e)}")
-                    traceback.print_exc()
-                    await asyncio.sleep(5)
+            except Exception as e:
+                self.logger.error(f"Error in main loop: {str(e)}")
+                traceback.print_exc()
+                await asyncio.sleep(5)
     
-        except Exception as e:
-            self.logger.error(f"Fatal error in bot run loop: {str(e)}")
-            traceback.print_exc()
+    except Exception as e:
+        self.logger.error(f"Fatal error in bot run loop: {str(e)}")
+        traceback.print_exc()
 
 async def main():
     # Initialize and run the bot
