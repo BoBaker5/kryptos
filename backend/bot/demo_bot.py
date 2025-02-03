@@ -2144,39 +2144,39 @@ class DemoKrakenBot:
         except Exception as e:
             self.logger.error(f"Error in trailing stop: {str(e)}")
 
-def calculate_position_size(self, symbol: str, signal: dict) -> float:
-    try:
-        # Get current price from price feed
-        price = self.get_latest_price(symbol)
-        if price is None or price <= 0:
-            self.logger.error("Invalid price")
+    def calculate_position_size(self, symbol: str, signal: dict) -> float:
+        try:
+            # Get current price from price feed
+            price = self.get_latest_price(symbol)
+            if price is None or price <= 0:
+                self.logger.error("Invalid price")
+                return 0
+                
+            # For demo bot, use demo balance instead of Kraken API
+            total_usd_balance = self.demo_balance['ZUSD']
+            
+            if total_usd_balance < self.min_zusd_balance:
+                self.logger.warning(f"Balance ${total_usd_balance} below minimum ${self.min_zusd_balance}")
+                return 0
+                
+            # Calculate position size based on allocation
+            allocation = self.symbols[symbol]
+            position_size = min(
+                total_usd_balance * allocation,
+                total_usd_balance * self.max_position_size
+            )
+            
+            # Ensure minimum position size
+            if position_size < self.min_position_value:
+                self.logger.warning(f"Position size ${position_size:.2f} below minimum ${self.min_position_value}")
+                return 0
+                
+            return position_size
+            
+        except Exception as e:
+            self.logger.error(f"Demo position size calculation error: {e}")
             return 0
             
-        # For demo bot, use demo balance instead of Kraken API
-        total_usd_balance = self.demo_balance['ZUSD']
-        
-        if total_usd_balance < self.min_zusd_balance:
-            self.logger.warning(f"Balance ${total_usd_balance} below minimum ${self.min_zusd_balance}")
-            return 0
-            
-        # Calculate position size based on allocation
-        allocation = self.symbols[symbol]
-        position_size = min(
-            total_usd_balance * allocation,
-            total_usd_balance * self.max_position_size
-        )
-        
-        # Ensure minimum position size
-        if position_size < self.min_position_value:
-            self.logger.warning(f"Position size ${position_size:.2f} below minimum ${self.min_position_value}")
-            return 0
-            
-        return position_size
-        
-    except Exception as e:
-        self.logger.error(f"Demo position size calculation error: {e}")
-        return 0
-        
     async def retrain_models(self):
         try:
             # Collect new data
@@ -2321,7 +2321,7 @@ def calculate_position_size(self, symbol: str, signal: dict) -> float:
             self.logger.error(f"Error monitoring positions: {str(e)}")
             self.position_tracker.positions = {}  # Reset on error
 
- def init_database(self):  # Changed method name to avoid conflict
+    def init_database(self):  # Changed method name to avoid conflict
         """Initialize database tables"""
         try:
             conn = sqlite3.connect(self.db_name)
@@ -2355,7 +2355,7 @@ def calculate_position_size(self, symbol: str, signal: dict) -> float:
         except Exception as e:
             self.logger.error(f"Error initializing database: {str(e)}")
             raise  # Re-raise to handle in __init__
-    
+
     def load_demo_state(self) -> None:
         """Load demo bot state from database"""
         try:
