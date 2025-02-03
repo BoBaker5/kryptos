@@ -1194,6 +1194,73 @@ class EnhancedKrakenCryptoBot:
                 'vol_decimals': 8
             }
 
+    def get_metrics(self):
+        """Get current portfolio metrics"""
+        try:
+            balance = self.get_account_balance()
+            zusd = float(balance.get('ZUSD', 0))
+            
+            # Calculate basic metrics
+            metrics = {
+                "current_equity": zusd,
+                "pnl": 0,  # Will be calculated if we have positions
+                "pnl_percentage": 0
+            }
+            
+            # Get open positions
+            positions = self.get_positions()
+            if positions:
+                total_pnl = sum(float(pos.get('pnl', 0)) for pos in positions)
+                metrics['pnl'] = total_pnl
+                if zusd > 0:
+                    metrics['pnl_percentage'] = (total_pnl / zusd) * 100
+                    
+            return metrics
+            
+        except Exception as e:
+            self.logger.error(f"Error getting metrics: {e}")
+            return {"current_equity": 0, "pnl": 0, "pnl_percentage": 0}
+
+    def get_open_positions(self):
+        """Get list of current open positions"""
+        try:
+            positions = []
+            open_positions = self.k.get_open_positions()
+            
+            for pos in open_positions:
+                current_price = self.get_latest_price(pos['pair'])
+                if current_price:
+                    entry_price = float(pos['cost']) / float(pos['vol'])
+                    volume = float(pos['vol'])
+                    pnl = (current_price - entry_price) * volume
+                    pnl_percentage = ((current_price - entry_price) / entry_price) * 100
+                    
+                    positions.append({
+                        'pair': pos['pair'],
+                        'volume': str(volume),
+                        'entry_price': str(entry_price),
+                        'current_price': str(current_price),
+                        'pnl': str(pnl),
+                        'pnl_percentage': str(pnl_percentage)
+                    })
+                    
+            return positions
+            
+        except Exception as e:
+            self.logger.error(f"Error getting positions: {e}")
+            return []
+
+    def get_current_balance(self):
+        """Get current account balance"""
+        try:
+            balance = self.k.get_account_balance()
+            if isinstance(balance, pd.DataFrame):
+                return balance.to_dict()['vol']
+            return balance
+        except Exception as e:
+            self.logger.error(f"Error getting balance: {e}")
+            return {}
+    
     async def train_ai_models(self, historical_data: pd.DataFrame):
         """Train the AI models with historical data"""
         try:
