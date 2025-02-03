@@ -606,7 +606,7 @@ class DemoKrakenBot:
             
             # Initialize tracking components
             self.position_tracker = PositionTracker()
-            self.init_db()
+            self.init_database()
             
             # Initialize ML and AI components
             self.model_manager = MLModelManager()
@@ -2321,13 +2321,13 @@ def calculate_position_size(self, symbol: str, signal: dict) -> float:
             self.logger.error(f"Error monitoring positions: {str(e)}")
             self.position_tracker.positions = {}  # Reset on error
 
-    def init_db(self):
+ def init_database(self):  # Changed method name to avoid conflict
         """Initialize database tables"""
         try:
             conn = sqlite3.connect(self.db_name)
             c = conn.cursor()
     
-            # Create all required tables
+            # Create tables
             c.execute('''CREATE TABLE IF NOT EXISTS demo_balance
                         (currency TEXT PRIMARY KEY, amount REAL)''')
                         
@@ -2342,7 +2342,7 @@ def calculate_position_size(self, symbol: str, signal: dict) -> float:
             c.execute('''CREATE TABLE IF NOT EXISTS demo_portfolio_history
                         (timestamp TEXT, balance REAL, equity REAL)''')
     
-            # Initialize demo balance if table is empty
+            # Initialize demo balance if empty
             c.execute('SELECT COUNT(*) FROM demo_balance')
             if c.fetchone()[0] == 0:
                 c.execute('INSERT INTO demo_balance VALUES (?, ?)',
@@ -2354,6 +2354,7 @@ def calculate_position_size(self, symbol: str, signal: dict) -> float:
             
         except Exception as e:
             self.logger.error(f"Error initializing database: {str(e)}")
+            raise  # Re-raise to handle in __init__
     
     def load_demo_state(self) -> None:
         """Load demo bot state from database"""
