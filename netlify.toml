@@ -11,11 +11,10 @@
   to = "http://150.136.163.34:8000/api/:splat"
   status = 200
   force = true
-  headers = { X-From = "Netlify" }
   [redirects.headers]
     Access-Control-Allow-Origin = "*"
     Access-Control-Allow-Methods = "GET, POST, OPTIONS"
-    Access-Control-Allow-Headers = "Authorization, Content-Type"
+    Access-Control-Allow-Headers = "*"
     Access-Control-Allow-Credentials = "true"
 
 [[redirects]]
