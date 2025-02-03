@@ -2088,7 +2088,7 @@ class DemoKrakenBot:
             self.logger.error(f"Error collecting data for {symbol}: {str(e)}")
             return False
         
-        async def collect_all_data(self):
+    async def collect_all_data(self):
         """Collect data for all symbols"""
         results = {}
         for symbol in self.symbols:
