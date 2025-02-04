@@ -3,18 +3,16 @@ import axios from 'axios';
 import { Activity, DollarSign, LineChart } from 'lucide-react';
 import { ResponsiveContainer, Line, XAxis, YAxis, CartesianGrid, Tooltip, LineChart as RechartsLineChart } from 'recharts';
 
+const API_URL = 'https://kryptostrading.com';  // Production URL
+const REFRESH_INTERVAL = 30000; // 30 seconds
+
 const BotDashboard = ({ mode = 'live', userId = '1' }) => {
-  // Use HTTPS instead of HTTP
-  const API_URL = 'https://kryptostrading.com';
-  // Alternatively, use relative URLs to automatically match the protocol
-  // const API_URL = '';  // Empty string for relative URLs
-  
   const [botData, setBotData] = useState({
     status: 'stopped',
     positions: [],
     balance: {},
     metrics: {
-      current_equity: mode === 'demo' ? 1000000 : 0,
+      current_equity: mode === 'demo' ? 100000 : 0,
       pnl: 0,
       pnl_percentage: 0
     },
@@ -31,34 +29,37 @@ const BotDashboard = ({ mode = 'live', userId = '1' }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [isActionLoading, setIsActionLoading] = useState(false);
 
+  const axiosInstance = axios.create({
+    baseURL: API_URL,
+    timeout: 30000,
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    }
+  });
+
   const fetchBotStatus = useCallback(async () => {
-      try {
-          const endpoint = mode === 'demo' ? '/api/demo-status' : '/api/live-status';
-          const response = await axios({
-              method: 'get',
-              url: `${API_URL}${endpoint}`,
-              withCredentials: false,  // Changed to false
-              headers: {
-                  'Content-Type': 'application/json',
-                  'Accept': 'application/json'
-              }
-          });
-          
-          if (response.data.status === 'success') {
-              setBotData(response.data.data);
-              setError(null);
-          }
-      } catch (err) {
-          console.error('Error fetching bot status:', err);
-          setError('Unable to connect to trading server. Please check your connection.');
-      } finally {
-          setIsLoading(false);
+    try {
+      const endpoint = mode === 'demo' ? '/api/demo-status' : '/api/live-status';
+      const response = await axiosInstance.get(endpoint);
+      
+      if (response.data.status === 'success') {
+        setBotData(response.data.data);
+        setError(null);
       }
-  }, [API_URL, mode]);
-  
+    } catch (err) {
+      console.error('Error fetching bot status:', err);
+      const errorMessage = err.response?.data?.detail || 
+        'Unable to connect to trading server. Please try again later.';
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [mode, axiosInstance]);
+
   useEffect(() => {
     fetchBotStatus();
-    const interval = setInterval(fetchBotStatus, 30000);
+    const interval = setInterval(fetchBotStatus, REFRESH_INTERVAL);
     return () => clearInterval(interval);
   }, [fetchBotStatus]);
 
@@ -70,62 +71,49 @@ const BotDashboard = ({ mode = 'live', userId = '1' }) => {
   };
 
   const handleStartBot = async () => {
-      if (mode === 'live' && (!apiConfig.apiKey || !apiConfig.apiSecret)) {
-        setError('Please enter both API Key and Secret to start live trading.');
-        return;
+    if (mode === 'live' && (!apiConfig.apiKey || !apiConfig.apiSecret)) {
+      setError('Please enter both API Key and Secret to start live trading.');
+      return;
+    }
+
+    try {
+      setIsActionLoading(true);
+      const response = await axiosInstance.post(`/api/start-bot/${userId}`, {
+        apiKey: apiConfig.apiKey,
+        apiSecret: apiConfig.apiSecret
+      });
+      
+      if (response.data.status === 'success') {
+        await fetchBotStatus();
+        setError(null);
       }
-  
-      try {
-        setIsActionLoading(true);
-        const endpoint = `/api/start-bot/${userId}`;
-        const response = await axios({
-          method: 'post',
-          url: `${API_URL}${endpoint}`,
-          data: {
-            apiKey: apiConfig.apiKey,
-            apiSecret: apiConfig.apiSecret
-          },
-          withCredentials: false,
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          }
-        });
-        
-        if (response.data.status === 'success') {
-          await fetchBotStatus();
-        }
-      } catch (err) {
-        console.error('Start bot error:', err);
-        setError(err.response?.data?.detail || 'Failed to start bot. Please check your API keys and try again.');
-      } finally {
-        setIsActionLoading(false);
-      }
+    } catch (err) {
+      console.error('Start bot error:', err);
+      const errorMessage = err.response?.data?.detail || 
+        'Failed to start bot. Please check your API keys and try again.';
+      setError(errorMessage);
+    } finally {
+      setIsActionLoading(false);
+    }
   };
-  
+
   const handleStopBot = async () => {
-      try {
-        setIsActionLoading(true);
-        const endpoint = `/api/stop-bot/${userId}`;
-        const response = await axios({
-          method: 'post',
-          url: `${API_URL}${endpoint}`,
-          withCredentials: false,
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          }
-        });
-        
-        if (response.data.status === 'success') {
-          await fetchBotStatus();
-        }
-      } catch (err) {
-        console.error('Stop bot error:', err);
-        setError(err.response?.data?.detail || 'Failed to stop bot. Please try again.');
-      } finally {
-        setIsActionLoading(false);
+    try {
+      setIsActionLoading(true);
+      const response = await axiosInstance.post(`/api/stop-bot/${userId}`);
+      
+      if (response.data.status === 'success') {
+        await fetchBotStatus();
+        setError(null);
       }
+    } catch (err) {
+      console.error('Stop bot error:', err);
+      const errorMessage = err.response?.data?.detail || 
+        'Failed to stop bot. Please try again.';
+      setError(errorMessage);
+    } finally {
+      setIsActionLoading(false);
+    }
   };
 
   const renderApiKeyForm = () => {
