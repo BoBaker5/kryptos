@@ -18,6 +18,18 @@ const BotDashboard = ({ mode = 'live' }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [isActionLoading, setIsActionLoading] = useState(false);
 
+  // Keep separate state for demo and live bots
+  const [demoBotData, setDemoBotData] = useState({
+    status: 'running',
+    positions: [],
+    metrics: { current_equity: 100000, pnl: 0, pnl_percentage: 0 }
+  });
+  const [liveBotData, setLiveBotData] = useState({
+    status: 'stopped',
+    positions: [],
+    metrics: { current_equity: 0, pnl: 0, pnl_percentage: 0 }
+  });
+
   const fetchBotStatus = useCallback(async () => {
     try {
       const endpoint = mode === 'demo' ? '/api/demo-status' : '/api/live-status';
@@ -29,25 +41,49 @@ const BotDashboard = ({ mode = 'live' }) => {
       
       const data = await response.json();
       if (data.status === 'success') {
-        setBotData(prev => ({
-          ...prev,
-          ...data.data,
-          status: mode === 'demo' ? 'running' : (data.data.status || 'stopped'),
-          metrics: {
-            ...prev.metrics,
-            ...data.data.metrics,
-            current_equity: mode === 'demo' ? 100000 : (data.data.metrics?.current_equity || 0)
-          }
-        }));
+        if (mode === 'demo') {
+          setDemoBotData(prev => ({
+            ...prev,
+            ...data.data,
+            status: 'running',
+            metrics: {
+              ...prev.metrics,
+              ...data.data.metrics,
+              current_equity: 100000
+            }
+          }));
+        } else {
+          setLiveBotData(prev => ({
+            ...prev,
+            ...data.data,
+            status: data.data.status || 'stopped',
+            metrics: {
+              ...prev.metrics,
+              ...data.data.metrics
+            }
+          }));
+        }
         setError(null);
       }
     } catch (err) {
       console.error(`Error fetching ${mode} status:`, err);
       setError(`Unable to connect to ${mode} trading server. ${err.message}`);
+      
+      // Set demo default state if server fails
+      if (mode === 'demo') {
+        setDemoBotData(prev => ({
+          ...prev,
+          status: 'running',
+          metrics: { current_equity: 100000, pnl: 0, pnl_percentage: 0 }
+        }));
+      }
     } finally {
       setIsLoading(false);
     }
   }, [mode]);
+
+  // Use the appropriate bot data based on mode
+  const botData = mode === 'demo' ? demoBotData : liveBotData;
 
   useEffect(() => {
     fetchBotStatus();
@@ -151,7 +187,7 @@ const BotDashboard = ({ mode = 'live' }) => {
         </div>
       )}
 
-      {showApiConfig && (
+      {mode === 'live' && (
         <div className="bg-white rounded-lg shadow p-6 mb-6">
           <h2 className="text-xl font-semibold mb-4">API Configuration</h2>
           <div className="space-y-4">
