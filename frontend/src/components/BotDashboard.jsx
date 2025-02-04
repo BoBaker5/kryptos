@@ -25,10 +25,12 @@ const BotDashboard = ({ mode = 'live' }) => {
   const fetchBotStatus = useCallback(async () => {
     try {
       const endpoint = mode === 'demo' ? '/api/demo-status' : '/api/live-status';
-      const response = await fetch(endpoint);
+      const response = await fetch(endpoint, {
+        signal: AbortSignal.timeout(10000) // 10 second timeout
+      });
       
-      if (response.status === 504) {
-        throw new Error('Server timeout');
+      if (!response.ok) {
+        throw new Error(response.status === 504 ? 'Server timeout' : `Server returned ${response.status}`);
       }
       
       const data = await response.json();
