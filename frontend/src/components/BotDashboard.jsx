@@ -2,25 +2,22 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Activity, DollarSign, LineChart } from 'lucide-react';
 import { ResponsiveContainer, Line, XAxis, YAxis, CartesianGrid, Tooltip, LineChart as RechartsLineChart } from 'recharts';
 
+const DEFAULT_BOT_DATA = {
+  status: 'stopped',
+  positions: [],
+  balance: {},
+  metrics: {
+    current_equity: 0,
+    pnl: 0,
+    pnl_percentage: 0
+  },
+  trades: [],
+  performanceHistory: []
+};
+
 const BotDashboard = ({ mode = 'live' }) => {
-  const [botData, setBotData] = useState({
-    status: mode === 'demo' ? 'running' : 'stopped',
-    positions: [],
-    balance: {},
-    metrics: {
-      current_equity: mode === 'demo' ? 100000 : 0,
-      pnl: 0,
-      pnl_percentage: 0
-    },
-    trades: [],
-    performanceHistory: []
-  });
-
-  const [apiConfig, setApiConfig] = useState({
-    apiKey: '',
-    apiSecret: ''
-  });
-
+  const [botData, setBotData] = useState(DEFAULT_BOT_DATA);
+  const [apiConfig, setApiConfig] = useState({ apiKey: '', apiSecret: '' });
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isActionLoading, setIsActionLoading] = useState(false);
@@ -36,34 +33,38 @@ const BotDashboard = ({ mode = 'live' }) => {
       
       const data = await response.json();
       if (data.status === 'success') {
-        setBotData(data.data);
+        setBotData(prev => ({
+          ...prev,
+          ...data.data,
+          status: data.data.status || 'stopped'
+        }));
         setError(null);
       }
     } catch (err) {
-      console.error('Error fetching bot status:', err);
-      setError('Unable to connect to trading server. Please try again later.');
+      console.error(`Error fetching ${mode} status:`, err);
+      setError(`Unable to connect to ${mode} trading server`);
     } finally {
       setIsLoading(false);
     }
   }, [mode]);
 
   useEffect(() => {
+    setIsLoading(true);
+    setBotData(DEFAULT_BOT_DATA);
     fetchBotStatus();
     const interval = setInterval(fetchBotStatus, 30000);
     return () => clearInterval(interval);
-  }, [fetchBotStatus]);
+  }, [fetchBotStatus, mode]);
 
   const handleApiKeyChange = (field, value) => {
-    setApiConfig(prev => ({
-      ...prev,
-      [field]: value
-    }));
+    setApiConfig(prev => ({ ...prev, [field]: value }));
     setError(null);
   };
 
   const handleStartBot = async () => {
+    if (mode !== 'live') return;
     if (!apiConfig.apiKey || !apiConfig.apiSecret) {
-      setError('Please enter both API Key and Secret to start live trading.');
+      setError('Please enter both API Key and Secret');
       return;
     }
 
@@ -71,45 +72,32 @@ const BotDashboard = ({ mode = 'live' }) => {
       setIsActionLoading(true);
       const response = await fetch('/api/start-bot/1', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(apiConfig)
       });
       
-      if (!response.ok) {
-        throw new Error('Failed to start bot');
-      }
+      if (!response.ok) throw new Error('Failed to start bot');
       
-      const data = await response.json();
-      if (data.status === 'success') {
-        await fetchBotStatus();
-        setError(null);
-      }
+      await fetchBotStatus();
+      setError(null);
     } catch (err) {
-      console.error('Start bot error:', err);
-      setError('Failed to start bot. Please check your API keys and try again.');
+      setError('Failed to start bot. Check API keys and try again.');
     } finally {
       setIsActionLoading(false);
     }
   };
 
   const handleStopBot = async () => {
+    if (mode !== 'live') return;
+    
     try {
       setIsActionLoading(true);
-      const response = await fetch('/api/stop-bot/1', {
-        method: 'POST'
-      });
+      const response = await fetch('/api/stop-bot/1', { method: 'POST' });
       
-      if (!response.ok) {
-        throw new Error('Failed to stop bot');
-      }
+      if (!response.ok) throw new Error('Failed to stop bot');
       
-      const data = await response.json();
-      if (data.status === 'success') {
-        await fetchBotStatus();
-        setError(null);
-      }
+      await fetchBotStatus();
+      setError(null);
     } catch (err) {
       setError('Failed to stop bot. Please try again.');
     } finally {
@@ -117,13 +105,10 @@ const BotDashboard = ({ mode = 'live' }) => {
     }
   };
 
-  // Rest of your component code remains the same, including renderApiKeyForm, 
-  // renderActionButton, renderPerformanceChart, and the return statement...
-  
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500" />
       </div>
     );
   }
@@ -241,7 +226,6 @@ const BotDashboard = ({ mode = 'live' }) => {
         </div>
       </div>
 
-      {/* Performance Chart */}
       <div className="bg-white rounded-lg shadow p-6 mb-6">
         <h2 className="text-xl font-semibold mb-4">Performance History</h2>
         <div className="h-64">
@@ -275,7 +259,6 @@ const BotDashboard = ({ mode = 'live' }) => {
         </div>
       </div>
 
-      {/* Positions Table */}
       <div className="bg-white rounded-lg shadow p-6 mb-6">
         <h2 className="text-xl font-semibold mb-4">Current Positions</h2>
         <div className="overflow-x-auto">
