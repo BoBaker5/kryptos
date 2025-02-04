@@ -2,21 +2,17 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Activity, DollarSign, LineChart } from 'lucide-react';
 import { ResponsiveContainer, Line, XAxis, YAxis, CartesianGrid, Tooltip, LineChart as RechartsLineChart } from 'recharts';
 
-const DEFAULT_BOT_DATA = {
-  status: 'stopped',
-  positions: [],
-  balance: {},
-  metrics: {
-    current_equity: 0,
-    pnl: 0,
-    pnl_percentage: 0
-  },
-  trades: [],
-  performanceHistory: []
-};
-
 const BotDashboard = ({ mode = 'live' }) => {
-  const [botData, setBotData] = useState(DEFAULT_BOT_DATA);
+  const [botData, setBotData] = useState({
+    status: mode === 'demo' ? 'running' : 'stopped',
+    positions: [],
+    balance: {},
+    metrics: {
+      current_equity: mode === 'demo' ? 100000 : 0,
+      pnl: 0,
+      pnl_percentage: 0
+    }
+  });
   const [apiConfig, setApiConfig] = useState({ apiKey: '', apiSecret: '' });
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -25,18 +21,10 @@ const BotDashboard = ({ mode = 'live' }) => {
   const fetchBotStatus = useCallback(async () => {
     try {
       const endpoint = mode === 'demo' ? '/api/demo-status' : '/api/live-status';
-      const response = await fetch(endpoint, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        // Add retry logic
-        retry: 3,
-        retryDelay: 1000
-      });
+      const response = await fetch(endpoint);
       
-      if (!response.ok) {
-        throw new Error(`Server returned ${response.status}`);
+      if (response.status === 504) {
+        throw new Error('Server timeout');
       }
       
       const data = await response.json();
@@ -44,39 +32,28 @@ const BotDashboard = ({ mode = 'live' }) => {
         setBotData(prev => ({
           ...prev,
           ...data.data,
-          status: data.data.status || (mode === 'demo' ? 'running' : 'stopped')
+          status: mode === 'demo' ? 'running' : (data.data.status || 'stopped'),
+          metrics: {
+            ...prev.metrics,
+            ...data.data.metrics,
+            current_equity: mode === 'demo' ? 100000 : (data.data.metrics?.current_equity || 0)
+          }
         }));
         setError(null);
-      } else {
-        throw new Error(data.message || 'Unknown error');
       }
     } catch (err) {
       console.error(`Error fetching ${mode} status:`, err);
       setError(`Unable to connect to ${mode} trading server. ${err.message}`);
-      // Set default state for demo mode
-      if (mode === 'demo') {
-        setBotData(prev => ({
-          ...prev,
-          status: 'running',
-          metrics: {
-            current_equity: 100000,
-            pnl: 0,
-            pnl_percentage: 0
-          }
-        }));
-      }
     } finally {
       setIsLoading(false);
     }
   }, [mode]);
 
   useEffect(() => {
-    setIsLoading(true);
-    setBotData(DEFAULT_BOT_DATA);
     fetchBotStatus();
     const interval = setInterval(fetchBotStatus, 30000);
     return () => clearInterval(interval);
-  }, [fetchBotStatus, mode]);
+  }, [fetchBotStatus]);
 
   const handleApiKeyChange = (field, value) => {
     setApiConfig(prev => ({ ...prev, [field]: value }));
@@ -84,7 +61,6 @@ const BotDashboard = ({ mode = 'live' }) => {
   };
 
   const handleStartBot = async () => {
-    if (mode !== 'live') return;
     if (!apiConfig.apiKey || !apiConfig.apiSecret) {
       setError('Please enter both API Key and Secret');
       return;
@@ -98,7 +74,9 @@ const BotDashboard = ({ mode = 'live' }) => {
         body: JSON.stringify(apiConfig)
       });
       
-      if (!response.ok) throw new Error('Failed to start bot');
+      if (!response.ok) {
+        throw new Error('Failed to start bot');
+      }
       
       await fetchBotStatus();
       setError(null);
@@ -110,13 +88,13 @@ const BotDashboard = ({ mode = 'live' }) => {
   };
 
   const handleStopBot = async () => {
-    if (mode !== 'live') return;
-    
     try {
       setIsActionLoading(true);
       const response = await fetch('/api/stop-bot/1', { method: 'POST' });
       
-      if (!response.ok) throw new Error('Failed to stop bot');
+      if (!response.ok) {
+        throw new Error('Failed to stop bot');
+      }
       
       await fetchBotStatus();
       setError(null);
@@ -135,6 +113,9 @@ const BotDashboard = ({ mode = 'live' }) => {
     );
   }
 
+  // Always show API configuration in live mode when not running
+  const showApiConfig = mode === 'live' && botData.status !== 'running';
+
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
@@ -144,21 +125,17 @@ const BotDashboard = ({ mode = 'live' }) => {
         
         <div className="flex items-center gap-4">
           <div className={`px-3 py-1 rounded-full ${
-            botData.status === 'running' 
-              ? 'bg-green-100 text-green-800' 
-              : 'bg-red-100 text-red-800'
+            botData.status === 'running' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
           }`}>
             {botData.status === 'running' ? 'Active' : 'Stopped'}
           </div>
           {mode === 'live' && (
             <button
               onClick={botData.status === 'running' ? handleStopBot : handleStartBot}
-              disabled={isActionLoading}
+              disabled={isActionLoading || (showApiConfig && (!apiConfig.apiKey || !apiConfig.apiSecret))}
               className={`px-4 py-2 rounded text-white ${
-                botData.status === 'running' 
-                  ? 'bg-red-500 hover:bg-red-600' 
-                  : 'bg-green-500 hover:bg-green-600'
-              } ${isActionLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                botData.status === 'running' ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'
+              } ${(isActionLoading || (showApiConfig && (!apiConfig.apiKey || !apiConfig.apiSecret))) ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               {isActionLoading 
                 ? (botData.status === 'running' ? 'Stopping...' : 'Starting...') 
@@ -174,7 +151,7 @@ const BotDashboard = ({ mode = 'live' }) => {
         </div>
       )}
 
-      {mode === 'live' && botData.status !== 'running' && (
+      {showApiConfig && (
         <div className="bg-white rounded-lg shadow p-6 mb-6">
           <h2 className="text-xl font-semibold mb-4">API Configuration</h2>
           <div className="space-y-4">
@@ -182,7 +159,7 @@ const BotDashboard = ({ mode = 'live' }) => {
               <label className="block text-sm font-medium text-gray-700">API Key</label>
               <input 
                 type="text"
-                className="mt-1 block w-full rounded-md border border-gray-300 shadow-sm p-2"
+                className="mt-1 block w-full rounded-md border border-gray-300 shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500"
                 value={apiConfig.apiKey}
                 onChange={(e) => handleApiKeyChange('apiKey', e.target.value)}
                 placeholder="Enter your Kraken API Key"
@@ -192,106 +169,73 @@ const BotDashboard = ({ mode = 'live' }) => {
               <label className="block text-sm font-medium text-gray-700">API Secret</label>
               <input 
                 type="password"
-                className="mt-1 block w-full rounded-md border border-gray-300 shadow-sm p-2"
+                className="mt-1 block w-full rounded-md border border-gray-300 shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500"
                 value={apiConfig.apiSecret}
                 onChange={(e) => handleApiKeyChange('apiSecret', e.target.value)}
                 placeholder="Enter your Kraken API Secret"
               />
             </div>
+            <p className="text-sm text-gray-500">
+              Enter your Kraken API credentials to start live trading. Make sure your API key has trading permissions enabled.
+            </p>
           </div>
         </div>
       )}
 
+      {/* Stats Dashboard */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-500">Portfolio Value</p>
-              <h3 className="text-2xl font-bold">
-                ${botData.metrics?.current_equity?.toFixed(2) || '0.00'}
-              </h3>
+        {[
+          {
+            title: 'Portfolio Value',
+            value: botData.metrics?.current_equity?.toFixed(2) || '0.00',
+            icon: DollarSign,
+            prefix: '$'
+          },
+          {
+            title: 'P&L',
+            value: botData.metrics?.pnl?.toFixed(2) || '0.00',
+            percentage: botData.metrics?.pnl_percentage?.toFixed(2) || '0.00',
+            icon: Activity,
+            prefix: '$',
+            color: botData.metrics?.pnl >= 0 ? 'text-green-500' : 'text-red-500'
+          },
+          {
+            title: 'Active Positions',
+            value: botData.positions?.length || 0,
+            icon: LineChart
+          }
+        ].map((stat, index) => (
+          <div key={index} className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-500">{stat.title}</p>
+                <h3 className={`text-2xl font-bold ${stat.color || ''}`}>
+                  {stat.prefix || ''}{stat.value}
+                </h3>
+                {stat.percentage !== undefined && (
+                  <p className={stat.color}>
+                    {Number(stat.percentage) >= 0 ? '+' : ''}{stat.percentage}%
+                  </p>
+                )}
+              </div>
+              <stat.icon className="h-8 w-8 text-blue-500" />
             </div>
-            <DollarSign className="h-8 w-8 text-blue-500" />
           </div>
-        </div>
-
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-500">P&L</p>
-              <h3 className={`text-2xl font-bold ${
-                botData.metrics?.pnl >= 0 ? 'text-green-500' : 'text-red-500'
-              }`}>
-                ${botData.metrics?.pnl?.toFixed(2) || '0.00'}
-              </h3>
-              <p className={`text-sm ${
-                botData.metrics?.pnl_percentage >= 0 ? 'text-green-500' : 'text-red-500'
-              }`}>
-                {botData.metrics?.pnl_percentage >= 0 ? '+' : ''}
-                {botData.metrics?.pnl_percentage?.toFixed(2) || '0.00'}%
-              </p>
-            </div>
-            <Activity className="h-8 w-8 text-blue-500" />
-          </div>
-        </div>
-
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-500">Active Positions</p>
-              <h3 className="text-2xl font-bold">
-                {botData.positions?.length || 0}
-              </h3>
-            </div>
-            <LineChart className="h-8 w-8 text-blue-500" />
-          </div>
-        </div>
+        ))}
       </div>
 
-      <div className="bg-white rounded-lg shadow p-6 mb-6">
-        <h2 className="text-xl font-semibold mb-4">Performance History</h2>
-        <div className="h-64">
-          {!botData.performanceHistory?.length ? (
-            <div className="h-full flex items-center justify-center text-gray-500">
-              No performance data available
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <RechartsLineChart data={botData.performanceHistory}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis 
-                  dataKey="timestamp" 
-                  tickFormatter={(time) => new Date(time).toLocaleTimeString()} 
-                />
-                <YAxis />
-                <Tooltip 
-                  formatter={(value) => [`$${value.toLocaleString()}`, 'Portfolio Value']}
-                  labelFormatter={(label) => new Date(label).toLocaleString()}
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="value" 
-                  stroke="#3B82F6" 
-                  strokeWidth={2}
-                  dot={false}
-                />
-              </RechartsLineChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-      </div>
-
-      <div className="bg-white rounded-lg shadow p-6 mb-6">
+      {/* Positions Table */}
+      <div className="bg-white rounded-lg shadow p-6">
         <h2 className="text-xl font-semibold mb-4">Current Positions</h2>
         <div className="overflow-x-auto">
           <table className="min-w-full">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Symbol</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Quantity</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Entry Price</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Current Price</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">P/L %</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Symbol</th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Entry Price</th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Current Price</th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">P/L %</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -304,14 +248,12 @@ const BotDashboard = ({ mode = 'live' }) => {
               ) : (
                 botData.positions.map((position, index) => (
                   <tr key={index}>
-                    <td className="px-6 py-4">{position.symbol}</td>
-                    <td className="px-6 py-4 text-right">{position.quantity}</td>
-                    <td className="px-6 py-4 text-right">${position.entry_price}</td>
-                    <td className="px-6 py-4 text-right">${position.current_price}</td>
-                    <td className={`px-6 py-4 text-right ${
-                      position.pnl >= 0 ? 'text-green-500' : 'text-red-500'
-                    }`}>
-                      {position.pnl >= 0 ? '+' : ''}{position.pnl}%
+                    <td className="px-6 py-4 whitespace-nowrap">{position.symbol}</td>
+                    <td className="px-6 py-4 text-right">{parseFloat(position.quantity).toFixed(8)}</td>
+                    <td className="px-6 py-4 text-right">${parseFloat(position.entry_price).toFixed(2)}</td>
+                    <td className="px-6 py-4 text-right">${parseFloat(position.current_price).toFixed(2)}</td>
+                    <td className={`px-6 py-4 text-right ${parseFloat(position.pnl) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                      {parseFloat(position.pnl) >= 0 ? '+' : ''}{parseFloat(position.pnl).toFixed(2)}%
                     </td>
                   </tr>
                 ))
