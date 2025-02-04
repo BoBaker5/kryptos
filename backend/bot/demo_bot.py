@@ -683,6 +683,15 @@ class DemoKrakenBot:
         except Exception as e:
             self.logger.error(f"Initialization error: {str(e)}")
             raise
+
+    def load_key(self, api_key: str, secret_key: str):
+        """Load API credentials for demo bot"""
+        try:
+            self.kraken.load_key(api_key, secret_key)
+            self.logger.info("Demo credentials loaded successfully")
+        except Exception as e:
+            self.logger.error(f"Error loading demo credentials: {str(e)}")
+            raise
     
     def get_demo_balance(self):
         """Get current demo account balance"""
