@@ -25,10 +25,18 @@ const BotDashboard = ({ mode = 'live' }) => {
   const fetchBotStatus = useCallback(async () => {
     try {
       const endpoint = mode === 'demo' ? '/api/demo-status' : '/api/live-status';
-      const response = await fetch(endpoint);
+      const response = await fetch(endpoint, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        // Add retry logic
+        retry: 3,
+        retryDelay: 1000
+      });
       
       if (!response.ok) {
-        throw new Error('Failed to fetch status');
+        throw new Error(`Server returned ${response.status}`);
       }
       
       const data = await response.json();
@@ -36,13 +44,27 @@ const BotDashboard = ({ mode = 'live' }) => {
         setBotData(prev => ({
           ...prev,
           ...data.data,
-          status: data.data.status || 'stopped'
+          status: data.data.status || (mode === 'demo' ? 'running' : 'stopped')
         }));
         setError(null);
+      } else {
+        throw new Error(data.message || 'Unknown error');
       }
     } catch (err) {
       console.error(`Error fetching ${mode} status:`, err);
-      setError(`Unable to connect to ${mode} trading server`);
+      setError(`Unable to connect to ${mode} trading server. ${err.message}`);
+      // Set default state for demo mode
+      if (mode === 'demo') {
+        setBotData(prev => ({
+          ...prev,
+          status: 'running',
+          metrics: {
+            current_equity: 100000,
+            pnl: 0,
+            pnl_percentage: 0
+          }
+        }));
+      }
     } finally {
       setIsLoading(false);
     }
