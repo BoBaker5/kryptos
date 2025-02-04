@@ -3,32 +3,24 @@ import { Activity, DollarSign, LineChart } from 'lucide-react';
 import { ResponsiveContainer, Line, XAxis, YAxis, CartesianGrid, Tooltip, LineChart as RechartsLineChart } from 'recharts';
 
 const BotDashboard = ({ mode = 'live' }) => {
-  const [botData, setBotData] = useState({
-    status: mode === 'demo' ? 'running' : 'stopped',
-    positions: [],
-    balance: {},
-    metrics: {
-      current_equity: mode === 'demo' ? 100000 : 0,
-      pnl: 0,
-      pnl_percentage: 0
-    }
-  });
-  const [apiConfig, setApiConfig] = useState({ apiKey: '', apiSecret: '' });
-  const [error, setError] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isActionLoading, setIsActionLoading] = useState(false);
-
-  // Keep separate state for demo and live bots
   const [demoBotData, setDemoBotData] = useState({
     status: 'running',
     positions: [],
     metrics: { current_equity: 100000, pnl: 0, pnl_percentage: 0 }
   });
+  
   const [liveBotData, setLiveBotData] = useState({
     status: 'stopped',
     positions: [],
     metrics: { current_equity: 0, pnl: 0, pnl_percentage: 0 }
   });
+  
+  const [apiConfig, setApiConfig] = useState({ apiKey: '', apiSecret: '' });
+  const [error, setError] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isActionLoading, setIsActionLoading] = useState(false);
+
+  const currentBotData = mode === 'demo' ? demoBotData : liveBotData;
 
   const fetchBotStatus = useCallback(async () => {
     try {
@@ -69,7 +61,6 @@ const BotDashboard = ({ mode = 'live' }) => {
       console.error(`Error fetching ${mode} status:`, err);
       setError(`Unable to connect to ${mode} trading server. ${err.message}`);
       
-      // Set demo default state if server fails
       if (mode === 'demo') {
         setDemoBotData(prev => ({
           ...prev,
@@ -82,14 +73,12 @@ const BotDashboard = ({ mode = 'live' }) => {
     }
   }, [mode]);
 
-  // Use the appropriate bot data based on mode
-  const botData = mode === 'demo' ? demoBotData : liveBotData;
-
   useEffect(() => {
+    setIsLoading(true);
     fetchBotStatus();
     const interval = setInterval(fetchBotStatus, 30000);
     return () => clearInterval(interval);
-  }, [fetchBotStatus]);
+  }, [fetchBotStatus, mode]);
 
   const handleApiKeyChange = (field, value) => {
     setApiConfig(prev => ({ ...prev, [field]: value }));
@@ -110,9 +99,7 @@ const BotDashboard = ({ mode = 'live' }) => {
         body: JSON.stringify(apiConfig)
       });
       
-      if (!response.ok) {
-        throw new Error('Failed to start bot');
-      }
+      if (!response.ok) throw new Error('Failed to start bot');
       
       await fetchBotStatus();
       setError(null);
@@ -128,9 +115,7 @@ const BotDashboard = ({ mode = 'live' }) => {
       setIsActionLoading(true);
       const response = await fetch('/api/stop-bot/1', { method: 'POST' });
       
-      if (!response.ok) {
-        throw new Error('Failed to stop bot');
-      }
+      if (!response.ok) throw new Error('Failed to stop bot');
       
       await fetchBotStatus();
       setError(null);
@@ -149,9 +134,6 @@ const BotDashboard = ({ mode = 'live' }) => {
     );
   }
 
-  // Always show API configuration in live mode when not running
-  const showApiConfig = mode === 'live' && botData.status !== 'running';
-
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
@@ -161,21 +143,21 @@ const BotDashboard = ({ mode = 'live' }) => {
         
         <div className="flex items-center gap-4">
           <div className={`px-3 py-1 rounded-full ${
-            botData.status === 'running' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+            currentBotData.status === 'running' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
           }`}>
-            {botData.status === 'running' ? 'Active' : 'Stopped'}
+            {currentBotData.status === 'running' ? 'Active' : 'Stopped'}
           </div>
           {mode === 'live' && (
             <button
-              onClick={botData.status === 'running' ? handleStopBot : handleStartBot}
-              disabled={isActionLoading || (showApiConfig && (!apiConfig.apiKey || !apiConfig.apiSecret))}
+              onClick={currentBotData.status === 'running' ? handleStopBot : handleStartBot}
+              disabled={isActionLoading}
               className={`px-4 py-2 rounded text-white ${
-                botData.status === 'running' ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'
-              } ${(isActionLoading || (showApiConfig && (!apiConfig.apiKey || !apiConfig.apiSecret))) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                currentBotData.status === 'running' ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'
+              } ${isActionLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               {isActionLoading 
-                ? (botData.status === 'running' ? 'Stopping...' : 'Starting...') 
-                : (botData.status === 'running' ? 'Stop Bot' : 'Start Bot')}
+                ? (currentBotData.status === 'running' ? 'Stopping...' : 'Starting...') 
+                : (currentBotData.status === 'running' ? 'Stop Bot' : 'Start Bot')}
             </button>
           )}
         </div>
@@ -187,7 +169,7 @@ const BotDashboard = ({ mode = 'live' }) => {
         </div>
       )}
 
-      {mode === 'live' && (
+      {mode === 'live' && currentBotData.status !== 'running' && (
         <div className="bg-white rounded-lg shadow p-6 mb-6">
           <h2 className="text-xl font-semibold mb-4">API Configuration</h2>
           <div className="space-y-4">
@@ -218,26 +200,25 @@ const BotDashboard = ({ mode = 'live' }) => {
         </div>
       )}
 
-      {/* Stats Dashboard */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
         {[
           {
             title: 'Portfolio Value',
-            value: botData.metrics?.current_equity?.toFixed(2) || '0.00',
+            value: currentBotData.metrics?.current_equity?.toFixed(2) || '0.00',
             icon: DollarSign,
             prefix: '$'
           },
           {
             title: 'P&L',
-            value: botData.metrics?.pnl?.toFixed(2) || '0.00',
-            percentage: botData.metrics?.pnl_percentage?.toFixed(2) || '0.00',
+            value: currentBotData.metrics?.pnl?.toFixed(2) || '0.00',
+            percentage: currentBotData.metrics?.pnl_percentage?.toFixed(2) || '0.00',
             icon: Activity,
             prefix: '$',
-            color: botData.metrics?.pnl >= 0 ? 'text-green-500' : 'text-red-500'
+            color: currentBotData.metrics?.pnl >= 0 ? 'text-green-500' : 'text-red-500'
           },
           {
             title: 'Active Positions',
-            value: botData.positions?.length || 0,
+            value: currentBotData.positions?.length || 0,
             icon: LineChart
           }
         ].map((stat, index) => (
@@ -260,7 +241,6 @@ const BotDashboard = ({ mode = 'live' }) => {
         ))}
       </div>
 
-      {/* Positions Table */}
       <div className="bg-white rounded-lg shadow p-6">
         <h2 className="text-xl font-semibold mb-4">Current Positions</h2>
         <div className="overflow-x-auto">
@@ -275,14 +255,14 @@ const BotDashboard = ({ mode = 'live' }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {!botData.positions?.length ? (
+              {!currentBotData.positions?.length ? (
                 <tr>
                   <td colSpan="5" className="px-6 py-4 text-center text-gray-500">
                     No active positions
                   </td>
                 </tr>
               ) : (
-                botData.positions.map((position, index) => (
+                currentBotData.positions.map((position, index) => (
                   <tr key={index}>
                     <td className="px-6 py-4 whitespace-nowrap">{position.symbol}</td>
                     <td className="px-6 py-4 text-right">{parseFloat(position.quantity).toFixed(8)}</td>
