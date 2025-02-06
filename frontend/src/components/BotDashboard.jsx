@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Activity, DollarSign, LineChart } from 'lucide-react';
-import { ResponsiveContainer, Line, XAxis, YAxis, CartesianGrid, Tooltip, LineChart as RechartsLineChart } from 'recharts';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 const BotDashboard = ({ mode = 'live' }) => {
   const [demoBotData, setDemoBotData] = useState({
@@ -19,49 +19,57 @@ const BotDashboard = ({ mode = 'live' }) => {
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isActionLoading, setIsActionLoading] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
 
   const currentBotData = mode === 'demo' ? demoBotData : liveBotData;
 
   const fetchBotStatus = useCallback(async () => {
     try {
       const endpoint = mode === 'demo' ? '/api/demo-status' : '/api/live-status';
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
       const response = await fetch(endpoint, {
-        signal: AbortSignal.timeout(10000) // 10 second timeout
+        signal: controller.signal
       });
       
+      clearTimeout(timeoutId);
+      
       if (!response.ok) {
-        throw new Error(response.status === 504 ? 'Server timeout' : `Server returned ${response.status}`);
+        throw new Error(response.status === 504 ? 'Gateway timeout' : `Server error ${response.status}`);
       }
       
       const data = await response.json();
+      
       if (data.status === 'success') {
+        const newData = {
+          ...data.data,
+          status: mode === 'demo' ? 'running' : (data.data.status || 'stopped'),
+          metrics: {
+            current_equity: mode === 'demo' ? 100000 : data.data.metrics?.current_equity || 0,
+            pnl: data.data.metrics?.pnl || 0,
+            pnl_percentage: data.data.metrics?.pnl_percentage || 0
+          }
+        };
+
         if (mode === 'demo') {
-          setDemoBotData(prev => ({
-            ...prev,
-            ...data.data,
-            status: 'running',
-            metrics: {
-              ...prev.metrics,
-              ...data.data.metrics,
-              current_equity: 100000
-            }
-          }));
+          setDemoBotData(prev => ({ ...prev, ...newData }));
         } else {
-          setLiveBotData(prev => ({
-            ...prev,
-            ...data.data,
-            status: data.data.status || 'stopped',
-            metrics: {
-              ...prev.metrics,
-              ...data.data.metrics
-            }
-          }));
+          setLiveBotData(prev => ({ ...prev, ...newData }));
         }
         setError(null);
+        setRetryCount(0);
       }
     } catch (err) {
-      console.error(`Error fetching ${mode} status:`, err);
-      setError(`Unable to connect to ${mode} trading server. ${err.message}`);
+      setError(`Unable to connect to ${mode} trading server: ${err.message}`);
+      
+      if (retryCount < 3) {
+        const timeout = Math.pow(2, retryCount) * 1000;
+        setTimeout(() => {
+          setRetryCount(prev => prev + 1);
+          fetchBotStatus();
+        }, timeout);
+      }
       
       if (mode === 'demo') {
         setDemoBotData(prev => ({
@@ -73,7 +81,7 @@ const BotDashboard = ({ mode = 'live' }) => {
     } finally {
       setIsLoading(false);
     }
-  }, [mode]);
+  }, [mode, retryCount]);
 
   useEffect(() => {
     setIsLoading(true);
@@ -166,9 +174,9 @@ const BotDashboard = ({ mode = 'live' }) => {
       </div>
 
       {error && (
-        <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded">
-          {error}
-        </div>
+        <Alert variant="destructive" className="mb-6">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
 
       {mode === 'live' && currentBotData.status !== 'running' && (
