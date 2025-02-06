@@ -24,9 +24,10 @@ const BotDashboard = ({ mode = 'live' }) => {
 
   const fetchBotStatus = useCallback(async () => {
     let controller = new AbortController();
+    let timeoutId;
     try {
-      const endpoint = mode === 'demo' ? '/api/demo-status' : '/api/live-status';
-      const timeout = setTimeout(() => controller.abort(), 15000);
+      const endpoint = `/api/${mode}-status`;
+      timeoutId = setTimeout(() => controller.abort(), 15000);
 
       const response = await fetch(endpoint, {
         signal: controller.signal,
@@ -35,8 +36,6 @@ const BotDashboard = ({ mode = 'live' }) => {
           'Pragma': 'no-cache'
         }
       });
-      
-      clearTimeout(timeout);
       
       if (!response.ok) {
         throw new Error(response.status === 504 ? 'Server gateway timeout' : 
@@ -66,39 +65,35 @@ const BotDashboard = ({ mode = 'live' }) => {
         setRetryCount(0);
       }
     } catch (err) {
+      console.error('Fetch error:', err);
       const isAbortError = err.name === 'AbortError';
-      setError(isAbortError ? 
-        'Connection timed out. Retrying...' : 
-        `Unable to connect to ${mode} trading server: ${err.message}`
-      );
+      setError(isAbortError ? 'Connection timed out. Retrying...' : err.message);
       
       if (retryCount < 3) {
-        const timeout = Math.pow(2, retryCount) * 2000;
-        setTimeout(() => {
-          setRetryCount(prev => prev + 1);
-          fetchBotStatus();
-        }, timeout);
-      }
-      
-      if (mode === 'demo') {
-        setDemoBotData(prev => ({
-          ...prev,
-          status: 'running',
-          metrics: { current_equity: 100000, pnl: 0, pnl_percentage: 0 }
-        }));
+        const delay = Math.pow(2, retryCount) * 2000;
+        await new Promise(resolve => setTimeout(resolve, delay));
+        setRetryCount(prev => prev + 1);
       }
     } finally {
-      setIsLoading(false);
+      clearTimeout(timeoutId);
       controller = null;
     }
   }, [mode, retryCount]);
 
   useEffect(() => {
-    setIsLoading(true);
-    fetchBotStatus();
-    const interval = setInterval(fetchBotStatus, 30000);
-    return () => clearInterval(interval);
-  }, [fetchBotStatus, mode]);
+    let intervalId;
+    const startPolling = async () => {
+      setIsLoading(true);
+      await fetchBotStatus();
+      setIsLoading(false);
+      intervalId = setInterval(fetchBotStatus, 30000);
+    };
+    
+    startPolling();
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [fetchBotStatus]);
 
   const handleApiKeyChange = (field, value) => {
     setApiConfig(prev => ({ ...prev, [field]: value }));
