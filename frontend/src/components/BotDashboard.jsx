@@ -23,19 +23,25 @@ const BotDashboard = ({ mode = 'live' }) => {
   const currentBotData = mode === 'demo' ? demoBotData : liveBotData;
 
   const fetchBotStatus = useCallback(async () => {
+    let controller = new AbortController();
     try {
       const endpoint = mode === 'demo' ? '/api/demo-status' : '/api/live-status';
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const timeout = setTimeout(() => controller.abort(), 15000);
 
       const response = await fetch(endpoint, {
-        signal: controller.signal
+        signal: controller.signal,
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
       });
       
-      clearTimeout(timeoutId);
+      clearTimeout(timeout);
       
       if (!response.ok) {
-        throw new Error(response.status === 504 ? 'Gateway timeout' : `Server error ${response.status}`);
+        throw new Error(response.status === 504 ? 'Server gateway timeout' : 
+          response.status === 502 ? 'Server unavailable' : 
+          `Server error ${response.status}`);
       }
       
       const data = await response.json();
@@ -60,11 +66,14 @@ const BotDashboard = ({ mode = 'live' }) => {
         setRetryCount(0);
       }
     } catch (err) {
-      console.error('Error fetching bot status:', err);
-      setError(`Unable to connect to ${mode} trading server: ${err.message}`);
+      const isAbortError = err.name === 'AbortError';
+      setError(isAbortError ? 
+        'Connection timed out. Retrying...' : 
+        `Unable to connect to ${mode} trading server: ${err.message}`
+      );
       
       if (retryCount < 3) {
-        const timeout = Math.pow(2, retryCount) * 1000;
+        const timeout = Math.pow(2, retryCount) * 2000;
         setTimeout(() => {
           setRetryCount(prev => prev + 1);
           fetchBotStatus();
@@ -80,6 +89,7 @@ const BotDashboard = ({ mode = 'live' }) => {
       }
     } finally {
       setIsLoading(false);
+      controller = null;
     }
   }, [mode, retryCount]);
 
