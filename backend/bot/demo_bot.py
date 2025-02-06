@@ -1238,81 +1238,99 @@ class DemoKrakenBot:
             return 0
     
     def generate_enhanced_signals(self, df: pd.DataFrame, symbol: str) -> dict:
-        """Generate trading signals with core confidence values only"""
+        """Generate trading signals with advanced strategy"""
         try:
             if len(df) < self.sma_long:
                 return {'action': 'hold', 'confidence': 0.5}
-        
+    
             df = self.calculate_advanced_indicators(df)
+            latest = df.iloc[-1]
             
-            # Get ML prediction (35% weight)
-            ml_confidence = 0.5
-            if self.is_initially_trained:
-                features = self.model_manager.prepare_features(df)
-                ml_signal = self.model_manager.predict(features)
-                ml_confidence = ml_signal['confidence']
-        
-            # Get AI prediction (25% weight)
-            ai_confidence = 0.5
-            if self.ai_trained:
-                ai_signal = self.ai_enhancer.predict_next_movement(df)
-                ai_confidence = ai_signal['confidence']
-        
-            # Technical analysis (40% weight)
-            tech_confidence = 0.5
-            market_state = self.analyze_market_state(df)
-            last_row = df.iloc[-1]
-        
-            # Calculate technical signals
-            if market_state['trend'] > 0 and market_state['volume_trend'] > 0:
-                tech_confidence += 0.02
-            elif market_state['trend'] < 0 and market_state['volume_trend'] < 0:
-                tech_confidence -= 0.02
-        
-            if all(x in last_row for x in ['macd', 'macd_signal']):
-                macd_strength = abs(last_row['macd'] - last_row['macd_signal']) / abs(last_row['macd_signal'])
-                volume_boost = min(1.5, last_row.get('volume_ma_ratio', 1))
-                volatility = df['close'].pct_change().rolling(20).std().iloc[-1]
-                volatility_factor = min(1.0, max(0.5, 1.0 - volatility * 10))
-                macd_impact = 0.02 * macd_strength * volume_boost * volatility_factor
+            # 1. Trend Analysis
+            sma20 = df['sma_20'].iloc[-1]
+            sma50 = df['sma_50'].iloc[-1]
+            trend = 1 if sma20 > sma50 else -1
+            
+            # 2. Momentum Indicators
+            rsi = latest['rsi']
+            macd = latest['macd']
+            macd_signal = latest['macd_signal']
+            
+            # 3. Volume Analysis
+            volume_ratio = latest['volume_ma_ratio']
+            
+            # 4. Volatility
+            bb_width = latest['bb_width']
+            atr = latest['atr']
+            
+            # 5. Price Action
+            recent_high = df['close'].rolling(window=20).max().iloc[-1]
+            recent_low = df['close'].rolling(window=20).min().iloc[-1]
+            current_price = df['close'].iloc[-1]
+            
+            # Calculate base confidence
+            confidence = 0.5  # Start at neutral
+    
+            # Strong buy signals
+            if (trend > 0 and  # Uptrend
+                macd > macd_signal and  # MACD crossover
+                rsi > 50 and rsi < 70 and  # RSI showing strength but not overbought
+                volume_ratio > 1.2 and  # Above average volume
+                current_price > sma20):  # Price above short-term MA
+                confidence += 0.15
                 
-                if last_row['macd'] > last_row['macd_signal']:
-                    tech_confidence += macd_impact
-                else:
-                    tech_confidence -= macd_impact
-        
-            final_confidence = 0.5 + (
-                (ml_confidence - 0.5) * 0.25 +
-                (ai_confidence - 0.5) * 0.35 +
-                (tech_confidence - 0.5) * 0.40
-            ) * volatility_factor
-        
-            final_confidence = max(0.45, min(0.55, final_confidence))
+            # Strong sell signals
+            elif (trend < 0 and  # Downtrend
+                  macd < macd_signal and  # MACD bearish
+                  rsi < 50 and rsi > 30 and  # RSI showing weakness but not oversold
+                  current_price < sma20):  # Price below short-term MA
+                confidence -= 0.15
+    
+            # Additional adjustments
+            if volume_ratio > 1.5:  # Very high volume
+                confidence += 0.05 * np.sign(trend)
                 
-            if final_confidence < 0.47:
-                action = 'sell'
-            elif final_confidence > 0.52:
+            if bb_width > 1.2:  # High volatility
+                confidence = 0.5 + (confidence - 0.5) * 0.8  # Reduce conviction
+                
+            # Risk management
+            in_position = symbol in self.demo_positions
+            if in_position:
+                position = self.demo_positions[symbol]
+                entry_price = position['entry_price']
+                
+                # Take profit at 5% gain
+                if current_price >= entry_price * 1.05:
+                    confidence = 0.3  # Trigger sell
+                    
+                # Stop loss at 2% loss
+                elif current_price <= entry_price * 0.98:
+                    confidence = 0.3  # Trigger sell
+    
+            # Ensure confidence stays within bounds
+            confidence = max(0.3, min(0.7, confidence))
+            
+            # Determine action
+            if confidence > 0.55:
                 action = 'buy'
+            elif confidence < 0.45:
+                action = 'sell'
             else:
                 action = 'hold'
-        
-            # Determine signal icon
-            if final_confidence < 0.47:
-                icon = "🔴"
-            elif final_confidence > 0.52:
-                icon = "🟢"
-            else:
-                icon = "⚪"
-        
-            # Log only the core confidences
-            self.logger.info(f"{symbol}: ML:{ml_confidence:.3f} AI:{ai_confidence:.3f} TECH:{tech_confidence:.3f} => {icon}{final_confidence:.3f}")
+    
+            # Log analysis
+            self.logger.info(f"{symbol} Analysis:")
+            self.logger.info(f"Trend: {'Bullish' if trend > 0 else 'Bearish'}")
+            self.logger.info(f"RSI: {rsi:.2f}")
+            self.logger.info(f"Volume Ratio: {volume_ratio:.2f}")
+            self.logger.info(f"Final Signal: {action.upper()} ({confidence:.3f})")
             
-            return {'action': action, 'confidence': final_confidence}
-        
+            return {'action': action, 'confidence': confidence}
+            
         except Exception as e:
             self.logger.error(f"Error generating signals: {str(e)}")
             return {'action': 'hold', 'confidence': 0.50}
-    
+        
     def get_minimum_order_requirements(self, symbol: str) -> dict:
         """Get minimum order requirements for a given symbol"""
         try:
