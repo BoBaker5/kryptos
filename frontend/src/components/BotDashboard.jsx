@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Activity, DollarSign, LineChart } from 'lucide-react';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 
 const BotDashboard = ({ mode = 'live' }) => {
   const [demoBotData, setDemoBotData] = useState({
@@ -61,6 +60,7 @@ const BotDashboard = ({ mode = 'live' }) => {
         setRetryCount(0);
       }
     } catch (err) {
+      console.error('Error fetching bot status:', err);
       setError(`Unable to connect to ${mode} trading server: ${err.message}`);
       
       if (retryCount < 3) {
@@ -114,6 +114,7 @@ const BotDashboard = ({ mode = 'live' }) => {
       await fetchBotStatus();
       setError(null);
     } catch (err) {
+      console.error('Error starting bot:', err);
       setError('Failed to start bot. Check API keys and try again.');
     } finally {
       setIsActionLoading(false);
@@ -130,6 +131,7 @@ const BotDashboard = ({ mode = 'live' }) => {
       await fetchBotStatus();
       setError(null);
     } catch (err) {
+      console.error('Error stopping bot:', err);
       setError('Failed to stop bot. Please try again.');
     } finally {
       setIsActionLoading(false);
@@ -174,9 +176,9 @@ const BotDashboard = ({ mode = 'live' }) => {
       </div>
 
       {error && (
-        <Alert variant="destructive" className="mb-6">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
+        <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded">
+          {error}
+        </div>
       )}
 
       {mode === 'live' && currentBotData.status !== 'running' && (
