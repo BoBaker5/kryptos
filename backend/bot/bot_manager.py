@@ -55,20 +55,20 @@ class BotManager:
         """Get demo bot metrics with proper P&L calculation"""
         if not self.demo_bot or not self.demo_running:
             return {
-                "current_equity": self.demo_initial_balance,
-                "pnl": 0,
-                "pnl_percentage": 0
+                "current_equity": float(self.demo_initial_balance),
+                "pnl": 0.0,
+                "pnl_percentage": 0.0
             }
         
         try:
             # Calculate total value including positions
-            total_value = self.demo_bot['balance'].get('ZUSD', self.demo_initial_balance)
+            total_value = float(self.demo_bot['balance'].get('ZUSD', self.demo_initial_balance))
             positions = self.demo_bot.get('positions', {})
             
             # Calculate P&L
-            pnl = total_value - self.demo_initial_balance
-            pnl_percentage = (pnl / self.demo_initial_balance) * 100
-
+            pnl = float(total_value - self.demo_initial_balance)
+            pnl_percentage = float((pnl / self.demo_initial_balance) * 100)
+    
             return {
                 "current_equity": total_value,
                 "pnl": pnl,
@@ -77,9 +77,9 @@ class BotManager:
         except Exception as e:
             self.logger.error(f"Error getting demo metrics: {e}")
             return {
-                "current_equity": self.demo_initial_balance,
-                "pnl": 0,
-                "pnl_percentage": 0
+                "current_equity": float(self.demo_initial_balance),
+                "pnl": 0.0,
+                "pnl_percentage": 0.0
             }
 
     async def get_demo_positions(self) -> List:
