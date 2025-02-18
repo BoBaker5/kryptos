@@ -7,8 +7,12 @@ import {
 } from 'lucide-react';
 import BotDashboard from './components/BotDashboard';
 
+// API configuration
+const API_BASE_URL = 'https://150.136.163.34:8000'; // Update with your domain
+const API_TIMEOUT = 10000; // 10 seconds
+
 function App() {
-  const [currentView, setCurrentView] = useState('live');
+  const [currentView, setCurrentView] = useState('demo');
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
 
   const navItems = [
@@ -18,37 +22,44 @@ function App() {
     { id: 'settings', label: 'Settings', icon: Settings }
   ];
 
-  // Check API connection
-  useEffect(() => {
-    const checkConnection = async () => {
-      try {
-        const response = await fetch('/api/health');
-        if (response.ok) {
-          setConnectionStatus('connected');
-        } else {
-          setConnectionStatus('error');
+  const checkConnection = async () => {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
+
+      const response = await fetch(`${API_BASE_URL}/api/health`, {
+        signal: controller.signal,
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
         }
-      } catch (error) {
-        console.error('Connection error:', error);
+      });
+
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        setConnectionStatus('connected');
+      } else {
         setConnectionStatus('error');
       }
-    };
+    } catch (error) {
+      console.error('Connection error:', error);
+      setConnectionStatus('error');
+    }
+  };
 
-    // Initial check
+  useEffect(() => {
     checkConnection();
-
-    // Set up periodic checking
-    const interval = setInterval(checkConnection, 30000); // Check every 30 seconds
-
+    const interval = setInterval(checkConnection, 30000);
     return () => clearInterval(interval);
   }, []);
 
   const renderContent = () => {
     switch (currentView) {
       case 'live':
-        return <BotDashboard mode="live" />;
+        return <BotDashboard mode="live" apiBaseUrl={API_BASE_URL} />;
       case 'demo':
-        return <BotDashboard mode="demo" />;
+        return <BotDashboard mode="demo" apiBaseUrl={API_BASE_URL} />;
       case 'analytics':
         return (
           <div className="flex items-center justify-center h-screen">
@@ -62,7 +73,7 @@ function App() {
           </div>
         );
       default:
-        return <BotDashboard mode="live" />;
+        return <BotDashboard mode="demo" apiBaseUrl={API_BASE_URL} />;
     }
   };
 
@@ -90,7 +101,6 @@ function App() {
 
   return (
     <div className="flex min-h-screen">
-      {/* Sidebar */}
       <div className="w-64 bg-[#001F3F] fixed h-full">
         <div className="flex items-center px-6 py-4">
           <img src="/logo.svg" alt="Kryptos" className="h-10" />
@@ -113,7 +123,6 @@ function App() {
           ))}
         </nav>
 
-        {/* Connection Status */}
         <div className="absolute bottom-0 w-full p-4">
           <div className="flex items-center justify-center px-4 py-2 bg-[#002b4d] rounded">
             <div className="flex items-center">
@@ -124,7 +133,6 @@ function App() {
         </div>
       </div>
 
-      {/* Main Content */}
       <div className="ml-64 flex-1 bg-gray-50">
         <main className="h-full">
           {renderContent()}
