@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Activity, DollarSign, LineChart } from 'lucide-react';
 
+const API_BASE_URL = 'http://150.136.163.34:8000';
+
 const BotDashboard = ({ mode = 'live' }) => {
   const [demoBotData, setDemoBotData] = useState({
     status: 'running',
@@ -23,22 +25,25 @@ const BotDashboard = ({ mode = 'live' }) => {
   const currentBotData = mode === 'demo' ? demoBotData : liveBotData;
 
   const fetchBotStatus = useCallback(async () => {
-    let controller = new AbortController();
+    let abortController = new AbortController();
     let timeoutId;
+
     try {
-      const endpoint = `/api/${mode}-status`;
-      timeoutId = setTimeout(() => controller.abort(), 15000);
+      const endpoint = `${API_BASE_URL}/api/${mode}-status`;
+      timeoutId = setTimeout(() => abortController.abort(), 5000);
 
       const response = await fetch(endpoint, {
-        signal: controller.signal,
+        signal: abortController.signal,
         headers: {
           'Cache-Control': 'no-cache',
           'Pragma': 'no-cache'
         }
       });
       
+      clearTimeout(timeoutId);
+      
       if (!response.ok) {
-        throw new Error(response.status === 504 ? 'Server gateway timeout' : 
+        throw new Error(response.status === 504 ? 'Connection timed out' : 
           response.status === 502 ? 'Server unavailable' : 
           `Server error ${response.status}`);
       }
@@ -67,7 +72,8 @@ const BotDashboard = ({ mode = 'live' }) => {
     } catch (err) {
       console.error('Fetch error:', err);
       const isAbortError = err.name === 'AbortError';
-      setError(isAbortError ? 'Connection timed out. Retrying...' : err.message);
+      setError(isAbortError ? 'Connection timed out. Retrying...' : 
+        'Unable to connect to trading server. Retrying...');
       
       if (retryCount < 3) {
         const delay = Math.pow(2, retryCount) * 2000;
@@ -76,21 +82,30 @@ const BotDashboard = ({ mode = 'live' }) => {
       }
     } finally {
       clearTimeout(timeoutId);
-      controller = null;
+      abortController = null;
     }
   }, [mode, retryCount]);
 
   useEffect(() => {
+    let mounted = true;
     let intervalId;
+
     const startPolling = async () => {
-      setIsLoading(true);
-      await fetchBotStatus();
-      setIsLoading(false);
-      intervalId = setInterval(fetchBotStatus, 30000);
+      if (mounted) {
+        setIsLoading(true);
+        await fetchBotStatus();
+        setIsLoading(false);
+        
+        if (mounted) {
+          intervalId = setInterval(fetchBotStatus, 10000); // Reduced polling frequency
+        }
+      }
     };
     
     startPolling();
+
     return () => {
+      mounted = false;
       clearInterval(intervalId);
     };
   }, [fetchBotStatus]);
@@ -108,7 +123,7 @@ const BotDashboard = ({ mode = 'live' }) => {
 
     try {
       setIsActionLoading(true);
-      const response = await fetch('/api/start-bot/1', {
+      const response = await fetch(`${API_BASE_URL}/api/start-bot/1`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(apiConfig)
@@ -129,7 +144,9 @@ const BotDashboard = ({ mode = 'live' }) => {
   const handleStopBot = async () => {
     try {
       setIsActionLoading(true);
-      const response = await fetch('/api/stop-bot/1', { method: 'POST' });
+      const response = await fetch(`${API_BASE_URL}/api/stop-bot/1`, {
+        method: 'POST'
+      });
       
       if (!response.ok) throw new Error('Failed to stop bot');
       
