@@ -9,8 +9,22 @@
   REACT_APP_WS_URL = "wss://kryptostrading.com"
 
 [[redirects]]
-  from = "/api/ws"
-  to = "http://150.136.163.34:8000/api/ws"
+  from = "/api/*"
+  to = "http://150.136.163.34:8000/api/:splat"
+  status = 200
+  force = true
+  [redirects.headers]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Methods = "GET, POST, OPTIONS, PUT, PATCH, DELETE"
+    Access-Control-Allow-Headers = "Authorization, Content-Type, X-Requested-With"
+    Access-Control-Allow-Credentials = "true"
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "same-origin"
+
+[[redirects]]
+  from = "/ws/*"
+  to = "http://150.136.163.34:8000/ws/:splat"
   status = 101
   force = true
   [redirects.headers]
@@ -18,21 +32,6 @@
     Connection = "Upgrade"
     Access-Control-Allow-Origin = "*"
     Access-Control-Allow-Headers = "*"
-    Access-Control-Allow-Methods = "GET, POST, OPTIONS"
-    Access-Control-Allow-Credentials = "true"
-    X-From = "Netlify"
-
-[[redirects]]
-  from = "/api/*"
-  to = "http://150.136.163.34:8000/api/:splat"
-  status = 200
-  force = true
-  [redirects.headers]
-    Access-Control-Allow-Origin = "*"
-    Access-Control-Allow-Headers = "*"
-    Access-Control-Allow-Methods = "GET, POST, OPTIONS, PUT, PATCH, DELETE"
-    Access-Control-Allow-Credentials = "true"
-    X-From = "Netlify"
 
 [[redirects]]
   from = "/*"
