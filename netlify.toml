@@ -7,6 +7,19 @@
   NODE_VERSION = "18"
 
 [[redirects]]
+  from = "/api/ws"
+  to = "http://150.136.163.34:8000/api/ws"
+  status = 101
+  force = true
+  [redirects.headers]
+    Connection = "upgrade"
+    Upgrade = "websocket"
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Methods = "GET, POST, OPTIONS"
+    Access-Control-Allow-Headers = "*"
+    Access-Control-Allow-Credentials = "true"
+
+[[redirects]]
   from = "/api/*"
   to = "http://150.136.163.34:8000/api/:splat"
   status = 200
