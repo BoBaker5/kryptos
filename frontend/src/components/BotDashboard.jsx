@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Activity, DollarSign, LineChart } from 'lucide-react';
 
 const BotDashboard = ({ mode = 'live', apiBaseUrl, wsBaseUrl }) => {
@@ -19,64 +19,74 @@ const BotDashboard = ({ mode = 'live', apiBaseUrl, wsBaseUrl }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
-  const [ws, setWs] = useState(null);
+  const wsRef = useRef(null);
+  const reconnectTimeoutRef = useRef(null);
+
+  const currentBotData = mode === 'demo' ? demoBotData : liveBotData;
 
   const connectWebSocket = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+
     try {
-      const socket = new WebSocket(`${wsBaseUrl}/api/ws`);
+      const wsUrl = `${wsBaseUrl}/api/ws`;
+      console.log('Connecting to WebSocket:', wsUrl);
       
-      socket.onopen = () => {
+      wsRef.current = new WebSocket(wsUrl);
+
+      wsRef.current.onopen = () => {
         console.log('WebSocket connected');
         setError(null);
-      };
-
-      socket.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.type === 'update' && data.mode === mode) {
-            if (mode === 'demo') {
-              setDemoBotData(prev => ({
-                ...prev,
-                ...data.data,
-                metrics: {
-                  ...prev.metrics,
-                  ...data.data.metrics
-                }
-              }));
-            } else {
-              setLiveBotData(prev => ({
-                ...prev,
-                ...data.data,
-                metrics: {
-                  ...prev.metrics,
-                  ...data.data.metrics
-                }
-              }));
-            }
-          }
-        } catch (e) {
-          console.error('WebSocket message error:', e);
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current);
+          reconnectTimeoutRef.current = null;
         }
       };
 
-      socket.onclose = (event) => {
+      wsRef.current.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'update' && data.mode === mode) {
+            const botData = {
+              ...data.data,
+              metrics: {
+                current_equity: parseFloat(data.data.metrics?.current_equity || 0),
+                pnl: parseFloat(data.data.metrics?.pnl || 0),
+                pnl_percentage: parseFloat(data.data.metrics?.pnl_percentage || 0)
+              }
+            };
+
+            if (mode === 'demo') {
+              setDemoBotData(prev => ({ ...prev, ...botData }));
+            } else {
+              setLiveBotData(prev => ({ ...prev, ...botData }));
+            }
+          }
+        } catch (err) {
+          console.error('WebSocket message error:', err);
+        }
+      };
+
+      wsRef.current.onclose = (event) => {
         console.log('WebSocket disconnected:', event.code, event.reason);
-        setError('WebSocket connection error. Reconnecting...');
-        // Reconnect after 5 seconds
-        setTimeout(connectWebSocket, 5000);
+        wsRef.current = null;
+        
+        // Attempt to reconnect after 5 seconds
+        if (!reconnectTimeoutRef.current) {
+          reconnectTimeoutRef.current = setTimeout(() => {
+            reconnectTimeoutRef.current = null;
+            connectWebSocket();
+          }, 5000);
+        }
       };
 
-      socket.onerror = (error) => {
+      wsRef.current.onerror = (error) => {
         console.error('WebSocket error:', error);
-        setError('WebSocket connection error');
+        setError('WebSocket connection error. Reconnecting...');
       };
 
-      setWs(socket);
     } catch (err) {
       console.error('WebSocket connection error:', err);
       setError('Failed to establish WebSocket connection');
-      // Retry connection after 5 seconds
-      setTimeout(connectWebSocket, 5000);
     }
   }, [mode, wsBaseUrl]);
 
@@ -100,9 +110,9 @@ const BotDashboard = ({ mode = 'live', apiBaseUrl, wsBaseUrl }) => {
           ...data.data,
           status: mode === 'demo' ? 'running' : (data.data.status || 'stopped'),
           metrics: {
-            current_equity: mode === 'demo' ? 100000 : data.data.metrics?.current_equity || 0,
-            pnl: data.data.metrics?.pnl || 0,
-            pnl_percentage: data.data.metrics?.pnl_percentage || 0
+            current_equity: mode === 'demo' ? 100000 : parseFloat(data.data.metrics?.current_equity || 0),
+            pnl: parseFloat(data.data.metrics?.pnl || 0),
+            pnl_percentage: parseFloat(data.data.metrics?.pnl_percentage || 0)
           }
         };
 
@@ -128,10 +138,10 @@ const BotDashboard = ({ mode = 'live', apiBaseUrl, wsBaseUrl }) => {
   }, [mode, apiBaseUrl, retryCount]);
 
   useEffect(() => {
-    let isActive = true;
+    let mounted = true;
     
     const init = async () => {
-      if (isActive) {
+      if (mounted) {
         setIsLoading(true);
         await fetchBotStatus();
         connectWebSocket();
@@ -143,20 +153,14 @@ const BotDashboard = ({ mode = 'live', apiBaseUrl, wsBaseUrl }) => {
     const statusInterval = setInterval(fetchBotStatus, 10000);
 
     return () => {
-      isActive = false;
-      clearInterval(statusInterval);
-      if (ws) {
-        ws.close();
-      }
-    };
-  }, [fetchBotStatus, connectWebSocket, ws]);
-  
-    return () => {
       mounted = false;
+      clearInterval(statusInterval);
+      
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
       }
+      
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
         reconnectTimeoutRef.current = null;
