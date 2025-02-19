@@ -3,7 +3,8 @@ import {
   LayoutDashboard, 
   LineChart, 
   Activity, 
-  Settings 
+  Settings,
+  AlertCircle
 } from 'lucide-react';
 import { ErrorBoundary } from 'react-error-boundary';
 import BotDashboard from './components/BotDashboard';
@@ -11,15 +12,18 @@ import BotDashboard from './components/BotDashboard';
 // API configuration
 const DOMAIN = window.location.hostname;
 const isLocal = DOMAIN === 'localhost' || DOMAIN === '127.0.0.1';
-const API_BASE_URL = isLocal ? 'http://localhost:8000' : process.env.REACT_APP_API_URL || `https://${DOMAIN}`;
-const WS_BASE_URL = isLocal ? 'ws://localhost:8000' : process.env.REACT_APP_WS_URL || `wss://${DOMAIN}`;
+const API_BASE_URL = isLocal ? 'http://localhost:8000' : 'https://kryptostrading.com';
+const WS_BASE_URL = isLocal ? 'ws://localhost:8000' : 'wss://kryptostrading.com';
 const API_TIMEOUT = 10000;
 
 function ErrorFallback({ error }) {
   return (
     <div className="p-6 max-w-sm mx-auto bg-white rounded-xl shadow-md flex items-center space-x-4">
-      <div className="text-xl font-medium text-black">Something went wrong</div>
-      <div className="text-red-500">{error.message}</div>
+      <AlertCircle className="h-6 w-6 text-red-500" />
+      <div>
+        <div className="text-xl font-medium text-black">Something went wrong</div>
+        <div className="text-red-500">{error.message}</div>
+      </div>
     </div>
   );
 }
@@ -92,14 +96,14 @@ function App() {
         );
       case 'analytics':
         return (
-          <div className="flex items-center justify-center h-screen">
-            <div className="text-lg text-gray-600">Analytics Dashboard Coming Soon</div>
+          <div className="flex items-center justify-center h-[calc(100vh-2rem)] bg-white rounded-lg shadow-sm m-4">
+            <div className="text-lg text-slate-600">Analytics Dashboard Coming Soon</div>
           </div>
         );
       case 'settings':
         return (
-          <div className="flex items-center justify-center h-screen">
-            <div className="text-lg text-gray-600">Settings Dashboard Coming Soon</div>
+          <div className="flex items-center justify-center h-[calc(100vh-2rem)] bg-white rounded-lg shadow-sm m-4">
+            <div className="text-lg text-slate-600">Settings Dashboard Coming Soon</div>
           </div>
         );
       default:
@@ -143,6 +147,7 @@ function App() {
 
   return (
     <div className="flex min-h-screen">
+      {/* Sidebar */}
       <div className="w-64 bg-[#001F3F] fixed h-full">
         <div className="flex items-center px-6 py-4">
           <img src="/logo.svg" alt="Kryptos" className="h-10" />
@@ -165,6 +170,7 @@ function App() {
           ))}
         </nav>
 
+        {/* Connection Status */}
         <div className="absolute bottom-0 w-full p-4">
           <div className="flex items-center justify-center px-4 py-2 bg-[#002b4d] rounded">
             <div className="flex items-center">
@@ -175,6 +181,7 @@ function App() {
         </div>
       </div>
 
+      {/* Main Content */}
       <div className="ml-64 flex-1 bg-gray-50">
         <main className="h-full">
           {renderContent()}
