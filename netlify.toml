@@ -1,14 +1,12 @@
 [build]
   base = "frontend"
-  command = """
-    npm install --save-dev @babel/plugin-proposal-private-property-in-object &&
-    CI=false npm run build
-  """
+  command = "CI=false npm run build"
   publish = "build"
 
 [build.environment]
-  NODE_VERSION = "18"
-  NODE_ENV = "development"
+  NODE_VERSION = "18.x"
+  REACT_APP_API_URL = "https://kryptostrading.com"
+  REACT_APP_WS_URL = "wss://kryptostrading.com"
 
 [[redirects]]
   from = "/api/ws"
@@ -16,13 +14,13 @@
   status = 101
   force = true
   [redirects.headers]
-    X-From = "Netlify"
-    Connection = "Upgrade"
     Upgrade = "websocket"
+    Connection = "Upgrade"
     Access-Control-Allow-Origin = "*"
-    Access-Control-Allow-Methods = "GET, POST, OPTIONS"
     Access-Control-Allow-Headers = "*"
+    Access-Control-Allow-Methods = "GET, POST, OPTIONS"
     Access-Control-Allow-Credentials = "true"
+    X-From = "Netlify"
 
 [[redirects]]
   from = "/api/*"
@@ -30,11 +28,11 @@
   status = 200
   force = true
   [redirects.headers]
-    X-From = "Netlify"
     Access-Control-Allow-Origin = "*"
-    Access-Control-Allow-Methods = "GET, POST, OPTIONS, PUT, PATCH, DELETE"
     Access-Control-Allow-Headers = "*"
+    Access-Control-Allow-Methods = "GET, POST, OPTIONS, PUT, PATCH, DELETE"
     Access-Control-Allow-Credentials = "true"
+    X-From = "Netlify"
 
 [[redirects]]
   from = "/*"
