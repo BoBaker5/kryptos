@@ -12,6 +12,7 @@ const DOMAIN = window.location.hostname;
 const isLocal = DOMAIN === 'localhost' || DOMAIN === '127.0.0.1';
 const API_BASE_URL = isLocal ? 'http://localhost:8000' : `https://${DOMAIN}`;
 const WS_BASE_URL = isLocal ? 'ws://localhost:8000' : `wss://${DOMAIN}`;
+const API_TIMEOUT = 10000; // Define the API_TIMEOUT constant
 
 function App() {
   const [currentView, setCurrentView] = useState('demo');
@@ -40,8 +41,7 @@ function App() {
       clearTimeout(timeoutId);
 
       if (response.ok) {
-        const data = await response.json();
-        setConnectionStatus(data.status === 'healthy' ? 'connected' : 'degraded');
+        setConnectionStatus('connected');
       } else {
         setConnectionStatus('error');
       }
@@ -96,8 +96,6 @@ function App() {
     switch (connectionStatus) {
       case 'connected':
         return 'bg-green-500';
-      case 'degraded':
-        return 'bg-yellow-500';
       case 'error':
         return 'bg-red-500';
       default:
@@ -109,8 +107,6 @@ function App() {
     switch (connectionStatus) {
       case 'connected':
         return 'Connected';
-      case 'degraded':
-        return 'Service Degraded';
       case 'error':
         return 'Connection Error';
       default:
