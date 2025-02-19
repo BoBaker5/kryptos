@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Activity, DollarSign, LineChart } from 'lucide-react';
 
 const BotDashboard = ({ mode = 'live', apiBaseUrl, wsBaseUrl }) => {
@@ -19,82 +19,78 @@ const BotDashboard = ({ mode = 'live', apiBaseUrl, wsBaseUrl }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
-  const wsRef = useRef(null);
-  const reconnectTimeoutRef = useRef(null);
-
-  const currentBotData = mode === 'demo' ? demoBotData : liveBotData;
+  const [ws, setWs] = useState(null);
 
   const connectWebSocket = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
-
     try {
-      wsRef.current = new WebSocket(`${wsBaseUrl}/api/ws`);
-
-      wsRef.current.onopen = () => {
+      const socket = new WebSocket(`${wsBaseUrl}/api/ws`);
+      
+      socket.onopen = () => {
         console.log('WebSocket connected');
         setError(null);
-        if (reconnectTimeoutRef.current) {
-          clearTimeout(reconnectTimeoutRef.current);
-          reconnectTimeoutRef.current = null;
-        }
       };
 
-      wsRef.current.onmessage = (event) => {
+      socket.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
           if (data.type === 'update' && data.mode === mode) {
             if (mode === 'demo') {
-              setDemoBotData(prev => ({ ...prev, ...data.data }));
+              setDemoBotData(prev => ({
+                ...prev,
+                ...data.data,
+                metrics: {
+                  ...prev.metrics,
+                  ...data.data.metrics
+                }
+              }));
             } else {
-              setLiveBotData(prev => ({ ...prev, ...data.data }));
+              setLiveBotData(prev => ({
+                ...prev,
+                ...data.data,
+                metrics: {
+                  ...prev.metrics,
+                  ...data.data.metrics
+                }
+              }));
             }
           }
-        } catch (err) {
-          console.error('WebSocket message error:', err);
+        } catch (e) {
+          console.error('WebSocket message error:', e);
         }
       };
 
-      wsRef.current.onclose = () => {
-        console.log('WebSocket disconnected');
-        // Attempt to reconnect after 5 seconds
-        reconnectTimeoutRef.current = setTimeout(() => {
-          connectWebSocket();
-        }, 5000);
-      };
-
-      wsRef.current.onerror = (error) => {
-        console.error('WebSocket error:', error);
+      socket.onclose = (event) => {
+        console.log('WebSocket disconnected:', event.code, event.reason);
         setError('WebSocket connection error. Reconnecting...');
+        // Reconnect after 5 seconds
+        setTimeout(connectWebSocket, 5000);
       };
 
+      socket.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        setError('WebSocket connection error');
+      };
+
+      setWs(socket);
     } catch (err) {
       console.error('WebSocket connection error:', err);
       setError('Failed to establish WebSocket connection');
+      // Retry connection after 5 seconds
+      setTimeout(connectWebSocket, 5000);
     }
   }, [mode, wsBaseUrl]);
 
   const fetchBotStatus = useCallback(async () => {
-    let abortController = new AbortController();
-    let timeoutId;
-
     try {
-      const endpoint = `${apiBaseUrl}/api/${mode}-status`;
-      timeoutId = setTimeout(() => abortController.abort(), 5000);
-
-      const response = await fetch(endpoint, {
-        signal: abortController.signal,
+      const response = await fetch(`${apiBaseUrl}/api/${mode}-status`, {
         headers: {
           'Cache-Control': 'no-cache',
           'Pragma': 'no-cache'
         }
       });
       
-      clearTimeout(timeoutId);
-      
       if (!response.ok) {
-        throw new Error(response.status === 504 ? 'Connection timed out' : 
-          response.status === 502 ? 'Server unavailable' : 
-          `Server error ${response.status}`);
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
       
       const data = await response.json();
@@ -120,35 +116,41 @@ const BotDashboard = ({ mode = 'live', apiBaseUrl, wsBaseUrl }) => {
       }
     } catch (err) {
       console.error('Fetch error:', err);
-      const isAbortError = err.name === 'AbortError';
-      setError(isAbortError ? 'Connection timed out. Retrying...' : 
-        'Unable to connect to trading server. Retrying...');
-      
       if (retryCount < 3) {
         const delay = Math.pow(2, retryCount) * 2000;
         await new Promise(resolve => setTimeout(resolve, delay));
         setRetryCount(prev => prev + 1);
+        await fetchBotStatus();
+      } else {
+        setError('Unable to connect to trading server');
       }
-    } finally {
-      clearTimeout(timeoutId);
-      abortController = null;
     }
   }, [mode, apiBaseUrl, retryCount]);
 
   useEffect(() => {
-    let mounted = true;
+    let isActive = true;
     
     const init = async () => {
-      if (mounted) {
+      if (isActive) {
         setIsLoading(true);
         await fetchBotStatus();
         connectWebSocket();
         setIsLoading(false);
       }
     };
-    
-    init();
 
+    init();
+    const statusInterval = setInterval(fetchBotStatus, 10000);
+
+    return () => {
+      isActive = false;
+      clearInterval(statusInterval);
+      if (ws) {
+        ws.close();
+      }
+    };
+  }, [fetchBotStatus, connectWebSocket, ws]);
+  
     return () => {
       mounted = false;
       if (wsRef.current) {
