@@ -8,7 +8,9 @@ import {
 import BotDashboard from './components/BotDashboard';
 
 // API configuration
-const API_BASE_URL = 'https://150.136.163.34:8000'; // Update with your domain
+const DOMAIN = 'kryptostrading.com';
+const API_BASE_URL = `https://${DOMAIN}`;  // Updated to use HTTPS
+const WS_BASE_URL = `wss://${DOMAIN}`;     // WebSocket URL
 const API_TIMEOUT = 10000; // 10 seconds
 
 function App() {
@@ -38,7 +40,8 @@ function App() {
       clearTimeout(timeoutId);
 
       if (response.ok) {
-        setConnectionStatus('connected');
+        const data = await response.json();
+        setConnectionStatus(data.status === 'healthy' ? 'connected' : 'degraded');
       } else {
         setConnectionStatus('error');
       }
@@ -57,9 +60,17 @@ function App() {
   const renderContent = () => {
     switch (currentView) {
       case 'live':
-        return <BotDashboard mode="live" apiBaseUrl={API_BASE_URL} />;
+        return <BotDashboard 
+          mode="live" 
+          apiBaseUrl={API_BASE_URL}
+          wsBaseUrl={WS_BASE_URL}
+        />;
       case 'demo':
-        return <BotDashboard mode="demo" apiBaseUrl={API_BASE_URL} />;
+        return <BotDashboard 
+          mode="demo" 
+          apiBaseUrl={API_BASE_URL}
+          wsBaseUrl={WS_BASE_URL}
+        />;
       case 'analytics':
         return (
           <div className="flex items-center justify-center h-screen">
@@ -73,7 +84,11 @@ function App() {
           </div>
         );
       default:
-        return <BotDashboard mode="demo" apiBaseUrl={API_BASE_URL} />;
+        return <BotDashboard 
+          mode="demo" 
+          apiBaseUrl={API_BASE_URL}
+          wsBaseUrl={WS_BASE_URL}
+        />;
     }
   };
 
@@ -81,6 +96,8 @@ function App() {
     switch (connectionStatus) {
       case 'connected':
         return 'bg-green-500';
+      case 'degraded':
+        return 'bg-yellow-500';
       case 'error':
         return 'bg-red-500';
       default:
@@ -92,6 +109,8 @@ function App() {
     switch (connectionStatus) {
       case 'connected':
         return 'Connected';
+      case 'degraded':
+        return 'Service Degraded';
       case 'error':
         return 'Connection Error';
       default:
