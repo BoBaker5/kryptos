@@ -4,7 +4,7 @@
   publish = "build"
 
 [build.environment]
-  NODE_VERSION = "18.x"
+  NODE_VERSION = "18.17.0"
   REACT_APP_API_URL = "https://kryptostrading.com"
   REACT_APP_WS_URL = "wss://kryptostrading.com"
 
