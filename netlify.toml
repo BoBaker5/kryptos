@@ -12,7 +12,8 @@
   status = 101
   force = true
   [redirects.headers]
-    Connection = "upgrade"
+    X-From = "Netlify"
+    Connection = "Upgrade"
     Upgrade = "websocket"
     Access-Control-Allow-Origin = "*"
     Access-Control-Allow-Methods = "GET, POST, OPTIONS"
@@ -25,8 +26,9 @@
   status = 200
   force = true
   [redirects.headers]
+    X-From = "Netlify"
     Access-Control-Allow-Origin = "*"
-    Access-Control-Allow-Methods = "GET, POST, OPTIONS"
+    Access-Control-Allow-Methods = "GET, POST, OPTIONS, PUT, PATCH, DELETE"
     Access-Control-Allow-Headers = "*"
     Access-Control-Allow-Credentials = "true"
 
