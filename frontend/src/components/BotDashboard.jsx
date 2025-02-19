@@ -1,9 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Activity, DollarSign, LineChart } from 'lucide-react';
 
-const API_BASE_URL = 'http://150.136.163.34:8000';
-
-const BotDashboard = ({ mode = 'live' }) => {
+const BotDashboard = ({ mode = 'live', apiBaseUrl, wsBaseUrl }) => {
   const [demoBotData, setDemoBotData] = useState({
     status: 'running',
     positions: [],
@@ -21,15 +19,66 @@ const BotDashboard = ({ mode = 'live' }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const wsRef = useRef(null);
+  const reconnectTimeoutRef = useRef(null);
 
   const currentBotData = mode === 'demo' ? demoBotData : liveBotData;
+
+  const connectWebSocket = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+
+    try {
+      wsRef.current = new WebSocket(`${wsBaseUrl}/api/ws`);
+
+      wsRef.current.onopen = () => {
+        console.log('WebSocket connected');
+        setError(null);
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current);
+          reconnectTimeoutRef.current = null;
+        }
+      };
+
+      wsRef.current.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'update' && data.mode === mode) {
+            if (mode === 'demo') {
+              setDemoBotData(prev => ({ ...prev, ...data.data }));
+            } else {
+              setLiveBotData(prev => ({ ...prev, ...data.data }));
+            }
+          }
+        } catch (err) {
+          console.error('WebSocket message error:', err);
+        }
+      };
+
+      wsRef.current.onclose = () => {
+        console.log('WebSocket disconnected');
+        // Attempt to reconnect after 5 seconds
+        reconnectTimeoutRef.current = setTimeout(() => {
+          connectWebSocket();
+        }, 5000);
+      };
+
+      wsRef.current.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        setError('WebSocket connection error. Reconnecting...');
+      };
+
+    } catch (err) {
+      console.error('WebSocket connection error:', err);
+      setError('Failed to establish WebSocket connection');
+    }
+  }, [mode, wsBaseUrl]);
 
   const fetchBotStatus = useCallback(async () => {
     let abortController = new AbortController();
     let timeoutId;
 
     try {
-      const endpoint = `${API_BASE_URL}/api/${mode}-status`;
+      const endpoint = `${apiBaseUrl}/api/${mode}-status`;
       timeoutId = setTimeout(() => abortController.abort(), 5000);
 
       const response = await fetch(endpoint, {
@@ -84,31 +133,34 @@ const BotDashboard = ({ mode = 'live' }) => {
       clearTimeout(timeoutId);
       abortController = null;
     }
-  }, [mode, retryCount]);
+  }, [mode, apiBaseUrl, retryCount]);
 
   useEffect(() => {
     let mounted = true;
-    let intervalId;
-
-    const startPolling = async () => {
+    
+    const init = async () => {
       if (mounted) {
         setIsLoading(true);
         await fetchBotStatus();
+        connectWebSocket();
         setIsLoading(false);
-        
-        if (mounted) {
-          intervalId = setInterval(fetchBotStatus, 10000); // Reduced polling frequency
-        }
       }
     };
     
-    startPolling();
+    init();
 
     return () => {
       mounted = false;
-      clearInterval(intervalId);
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
     };
-  }, [fetchBotStatus]);
+  }, [fetchBotStatus, connectWebSocket]);
 
   const handleApiKeyChange = (field, value) => {
     setApiConfig(prev => ({ ...prev, [field]: value }));
@@ -123,7 +175,7 @@ const BotDashboard = ({ mode = 'live' }) => {
 
     try {
       setIsActionLoading(true);
-      const response = await fetch(`${API_BASE_URL}/api/start-bot/1`, {
+      const response = await fetch(`${apiBaseUrl}/api/start-bot/1`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(apiConfig)
@@ -144,7 +196,7 @@ const BotDashboard = ({ mode = 'live' }) => {
   const handleStopBot = async () => {
     try {
       setIsActionLoading(true);
-      const response = await fetch(`${API_BASE_URL}/api/stop-bot/1`, {
+      const response = await fetch(`${apiBaseUrl}/api/stop-bot/1`, {
         method: 'POST'
       });
       
