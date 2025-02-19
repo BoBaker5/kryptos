@@ -8,10 +8,10 @@ import {
 import BotDashboard from './components/BotDashboard';
 
 // API configuration
-const DOMAIN = 'kryptostrading.com';
-const API_BASE_URL = `https://${DOMAIN}`;  // Updated to use HTTPS
-const WS_BASE_URL = `wss://${DOMAIN}`;     // WebSocket URL
-const API_TIMEOUT = 10000; // 10 seconds
+const DOMAIN = window.location.hostname;
+const isLocal = DOMAIN === 'localhost' || DOMAIN === '127.0.0.1';
+const API_BASE_URL = isLocal ? 'http://localhost:8000' : `https://${DOMAIN}`;
+const WS_BASE_URL = isLocal ? 'ws://localhost:8000' : `wss://${DOMAIN}`;
 
 function App() {
   const [currentView, setCurrentView] = useState('demo');
