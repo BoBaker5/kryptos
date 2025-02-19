@@ -3,35 +3,24 @@
   command = "npm install && CI=false npm run build"
   publish = "build"
 
-[build.environment]
-  NODE_VERSION = "18.17.0"
-  REACT_APP_API_URL = "https://kryptostrading.com"
-  REACT_APP_WS_URL = "wss://kryptostrading.com"
-
 [[redirects]]
   from = "/api/*"
-  to = "http://150.136.163.34:8000/api/:splat"
+  to = "https://kryptostrading.com/api/:splat"
   status = 200
   force = true
   [redirects.headers]
     Access-Control-Allow-Origin = "*"
-    Access-Control-Allow-Methods = "GET, POST, OPTIONS, PUT, PATCH, DELETE"
-    Access-Control-Allow-Headers = "Authorization, Content-Type, X-Requested-With"
-    Access-Control-Allow-Credentials = "true"
-    X-Frame-Options = "DENY"
-    X-Content-Type-Options = "nosniff"
-    Referrer-Policy = "same-origin"
+    Access-Control-Allow-Methods = "GET, POST, OPTIONS, PUT, DELETE"
+    Access-Control-Allow-Headers = "*"
 
 [[redirects]]
   from = "/ws/*"
-  to = "http://150.136.163.34:8000/ws/:splat"
+  to = "wss://kryptostrading.com/ws/:splat"
   status = 101
   force = true
   [redirects.headers]
     Upgrade = "websocket"
     Connection = "Upgrade"
-    Access-Control-Allow-Origin = "*"
-    Access-Control-Allow-Headers = "*"
 
 [[redirects]]
   from = "/*"
