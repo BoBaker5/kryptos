@@ -5,6 +5,7 @@ import {
   Activity, 
   Settings 
 } from 'lucide-react';
+import { ErrorBoundary } from 'react-error-boundary';
 import BotDashboard from './components/BotDashboard';
 
 // API configuration
@@ -13,6 +14,15 @@ const isLocal = DOMAIN === 'localhost' || DOMAIN === '127.0.0.1';
 const API_BASE_URL = isLocal ? 'http://localhost:8000' : process.env.REACT_APP_API_URL || `https://${DOMAIN}`;
 const WS_BASE_URL = isLocal ? 'ws://localhost:8000' : process.env.REACT_APP_WS_URL || `wss://${DOMAIN}`;
 const API_TIMEOUT = 10000;
+
+function ErrorFallback({ error }) {
+  return (
+    <div className="p-6 max-w-sm mx-auto bg-white rounded-xl shadow-md flex items-center space-x-4">
+      <div className="text-xl font-medium text-black">Something went wrong</div>
+      <div className="text-red-500">{error.message}</div>
+    </div>
+  );
+}
 
 function App() {
   const [currentView, setCurrentView] = useState('demo');
@@ -61,17 +71,25 @@ function App() {
   const renderContent = () => {
     switch (currentView) {
       case 'live':
-        return <BotDashboard 
-          mode="live" 
-          apiBaseUrl={API_BASE_URL}
-          wsBaseUrl={WS_BASE_URL}
-        />;
+        return (
+          <ErrorBoundary FallbackComponent={ErrorFallback}>
+            <BotDashboard 
+              mode="live" 
+              apiBaseUrl={API_BASE_URL}
+              wsBaseUrl={WS_BASE_URL}
+            />
+          </ErrorBoundary>
+        );
       case 'demo':
-        return <BotDashboard 
-          mode="demo" 
-          apiBaseUrl={API_BASE_URL}
-          wsBaseUrl={WS_BASE_URL}
-        />;
+        return (
+          <ErrorBoundary FallbackComponent={ErrorFallback}>
+            <BotDashboard 
+              mode="demo" 
+              apiBaseUrl={API_BASE_URL}
+              wsBaseUrl={WS_BASE_URL}
+            />
+          </ErrorBoundary>
+        );
       case 'analytics':
         return (
           <div className="flex items-center justify-center h-screen">
@@ -85,11 +103,15 @@ function App() {
           </div>
         );
       default:
-        return <BotDashboard 
-          mode="demo" 
-          apiBaseUrl={API_BASE_URL}
-          wsBaseUrl={WS_BASE_URL}
-        />;
+        return (
+          <ErrorBoundary FallbackComponent={ErrorFallback}>
+            <BotDashboard 
+              mode="demo" 
+              apiBaseUrl={API_BASE_URL}
+              wsBaseUrl={WS_BASE_URL}
+            />
+          </ErrorBoundary>
+        );
     }
   };
 
