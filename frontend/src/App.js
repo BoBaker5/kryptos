@@ -9,21 +9,25 @@ import {
 import { ErrorBoundary } from 'react-error-boundary';
 import BotDashboard from './components/BotDashboard';
 
-// API configuration
-const DOMAIN = window.location.hostname;
-const isLocal = DOMAIN === 'localhost' || DOMAIN === '127.0.0.1';
-const API_BASE_URL = isLocal ? 'http://localhost:8000' : 'https://kryptostrading.com';
-const WS_BASE_URL = isLocal ? 'ws://localhost:8000' : 'wss://kryptostrading.com';
+// API configuration - Direct to backend
+const API_BASE_URL = 'http://150.136.163.34:8000';
+const WS_BASE_URL = 'ws://150.136.163.34:8000';
 const API_TIMEOUT = 10000;
 
-function ErrorFallback({ error }) {
+function ErrorFallback({ error, resetErrorBoundary }) {
   return (
-    <div className="p-6 max-w-sm mx-auto bg-white rounded-xl shadow-md flex items-center space-x-4">
+    <div className="p-6 max-w-sm mx-auto bg-white rounded-xl shadow-md flex flex-col items-center space-y-4">
       <AlertCircle className="h-6 w-6 text-red-500" />
-      <div>
+      <div className="text-center">
         <div className="text-xl font-medium text-black">Something went wrong</div>
-        <div className="text-red-500">{error.message}</div>
+        <div className="text-red-500 mt-2">{error.message}</div>
       </div>
+      <button
+        onClick={resetErrorBoundary}
+        className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+      >
+        Try again
+      </button>
     </div>
   );
 }
@@ -31,6 +35,7 @@ function ErrorFallback({ error }) {
 function App() {
   const [currentView, setCurrentView] = useState('demo');
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
+  const [lastError, setLastError] = useState(null);
 
   const navItems = [
     { id: 'live', label: 'Live Trading', icon: LayoutDashboard },
@@ -57,12 +62,14 @@ function App() {
       if (response.ok) {
         const data = await response.json();
         setConnectionStatus(data.status === 'healthy' ? 'connected' : 'degraded');
+        setLastError(null);
       } else {
-        setConnectionStatus('error');
+        throw new Error(`Server returned status ${response.status}`);
       }
     } catch (error) {
       console.error('Connection error:', error);
       setConnectionStatus('error');
+      setLastError(error.message);
     }
   };
 
@@ -75,47 +82,30 @@ function App() {
   const renderContent = () => {
     switch (currentView) {
       case 'live':
-        return (
-          <ErrorBoundary FallbackComponent={ErrorFallback}>
-            <BotDashboard 
-              mode="live" 
-              apiBaseUrl={API_BASE_URL}
-              wsBaseUrl={WS_BASE_URL}
-            />
-          </ErrorBoundary>
-        );
       case 'demo':
         return (
-          <ErrorBoundary FallbackComponent={ErrorFallback}>
+          <ErrorBoundary 
+            FallbackComponent={ErrorFallback}
+            onReset={checkConnection}
+          >
             <BotDashboard 
-              mode="demo" 
+              mode={currentView} 
               apiBaseUrl={API_BASE_URL}
               wsBaseUrl={WS_BASE_URL}
             />
           </ErrorBoundary>
         );
       case 'analytics':
-        return (
-          <div className="flex items-center justify-center h-[calc(100vh-2rem)] bg-white rounded-lg shadow-sm m-4">
-            <div className="text-lg text-slate-600">Analytics Dashboard Coming Soon</div>
-          </div>
-        );
       case 'settings':
         return (
           <div className="flex items-center justify-center h-[calc(100vh-2rem)] bg-white rounded-lg shadow-sm m-4">
-            <div className="text-lg text-slate-600">Settings Dashboard Coming Soon</div>
+            <div className="text-lg text-slate-600">
+              {currentView === 'analytics' ? 'Analytics' : 'Settings'} Dashboard Coming Soon
+            </div>
           </div>
         );
       default:
-        return (
-          <ErrorBoundary FallbackComponent={ErrorFallback}>
-            <BotDashboard 
-              mode="demo" 
-              apiBaseUrl={API_BASE_URL}
-              wsBaseUrl={WS_BASE_URL}
-            />
-          </ErrorBoundary>
-        );
+        return null;
     }
   };
 
@@ -139,7 +129,7 @@ function App() {
       case 'degraded':
         return 'Service Degraded';
       case 'error':
-        return 'Connection Error';
+        return lastError ? `Error: ${lastError}` : 'Connection Error';
       default:
         return 'Connecting...';
     }
@@ -150,8 +140,7 @@ function App() {
       {/* Sidebar */}
       <div className="w-64 bg-[#001F3F] fixed h-full">
         <div className="flex items-center px-6 py-4">
-          <img src="/logo.svg" alt="Kryptos" className="h-10" />
-          <span className="ml-2 text-[#87CEEB] font-bold text-xl">KRYPTOS</span>
+          <span className="text-[#87CEEB] font-bold text-xl">KRYPTOS</span>
         </div>
         
         <nav className="mt-8">
