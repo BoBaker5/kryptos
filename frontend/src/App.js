@@ -4,14 +4,15 @@ import {
   LineChart, 
   Activity, 
   Settings,
-  AlertCircle
+  AlertCircle,
+  RefreshCw
 } from 'lucide-react';
 import { ErrorBoundary } from 'react-error-boundary';
 import BotDashboard from './components/BotDashboard';
 
-// API configuration - Direct to backend
-const API_BASE_URL = 'http://150.136.163.34:8000';
-const WS_BASE_URL = 'ws://150.136.163.34:8000';
+// API configuration with secure endpoints
+const API_BASE_URL = 'https://kryptostrading.com/api';
+const WS_BASE_URL = 'wss://kryptostrading.com/ws';
 const API_TIMEOUT = 10000;
 
 function ErrorFallback({ error, resetErrorBoundary }) {
@@ -19,14 +20,15 @@ function ErrorFallback({ error, resetErrorBoundary }) {
     <div className="p-6 max-w-sm mx-auto bg-white rounded-xl shadow-md flex flex-col items-center space-y-4">
       <AlertCircle className="h-6 w-6 text-red-500" />
       <div className="text-center">
-        <div className="text-xl font-medium text-black">Something went wrong</div>
+        <div className="text-xl font-medium text-black">Connection Error</div>
         <div className="text-red-500 mt-2">{error.message}</div>
       </div>
       <button
         onClick={resetErrorBoundary}
-        className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+        className="flex items-center px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
       >
-        Try again
+        <RefreshCw className="h-4 w-4 mr-2" />
+        Retry Connection
       </button>
     </div>
   );
@@ -36,6 +38,7 @@ function App() {
   const [currentView, setCurrentView] = useState('demo');
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
   const [lastError, setLastError] = useState(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   const navItems = [
     { id: 'live', label: 'Live Trading', icon: LayoutDashboard },
@@ -49,12 +52,13 @@ function App() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
 
-      const response = await fetch(`${API_BASE_URL}/api/health`, {
+      const response = await fetch(`${API_BASE_URL}/health`, {
         signal: controller.signal,
         headers: {
           'Cache-Control': 'no-cache',
           'Pragma': 'no-cache'
-        }
+        },
+        credentials: 'include'
       });
 
       clearTimeout(timeoutId);
@@ -63,6 +67,7 @@ function App() {
         const data = await response.json();
         setConnectionStatus(data.status === 'healthy' ? 'connected' : 'degraded');
         setLastError(null);
+        setRetryCount(0);
       } else {
         throw new Error(`Server returned status ${response.status}`);
       }
@@ -70,6 +75,15 @@ function App() {
       console.error('Connection error:', error);
       setConnectionStatus('error');
       setLastError(error.message);
+      
+      // Implement exponential backoff for retries
+      if (retryCount < 3) {
+        const backoffDelay = Math.pow(2, retryCount) * 1000;
+        setTimeout(() => {
+          setRetryCount(prev => prev + 1);
+          checkConnection();
+        }, backoffDelay);
+      }
     }
   };
 
@@ -79,6 +93,12 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
+  const handleRetry = () => {
+    setRetryCount(0);
+    setLastError(null);
+    checkConnection();
+  };
+
   const renderContent = () => {
     switch (currentView) {
       case 'live':
@@ -86,12 +106,14 @@ function App() {
         return (
           <ErrorBoundary 
             FallbackComponent={ErrorFallback}
-            onReset={checkConnection}
+            onReset={handleRetry}
+            resetKeys={[currentView]}
           >
             <BotDashboard 
               mode={currentView} 
               apiBaseUrl={API_BASE_URL}
               wsBaseUrl={WS_BASE_URL}
+              onError={setLastError}
             />
           </ErrorBoundary>
         );
@@ -122,22 +144,8 @@ function App() {
     }
   };
 
-  const getConnectionText = () => {
-    switch (connectionStatus) {
-      case 'connected':
-        return 'Connected';
-      case 'degraded':
-        return 'Service Degraded';
-      case 'error':
-        return lastError ? `Error: ${lastError}` : 'Connection Error';
-      default:
-        return 'Connecting...';
-    }
-  };
-
   return (
     <div className="flex min-h-screen">
-      {/* Sidebar */}
       <div className="w-64 bg-[#001F3F] fixed h-full">
         <div className="flex items-center px-6 py-4">
           <span className="text-[#87CEEB] font-bold text-xl">KRYPTOS</span>
@@ -159,18 +167,28 @@ function App() {
           ))}
         </nav>
 
-        {/* Connection Status */}
         <div className="absolute bottom-0 w-full p-4">
           <div className="flex items-center justify-center px-4 py-2 bg-[#002b4d] rounded">
             <div className="flex items-center">
-              <div className={`h-2 w-2 rounded-full ${getConnectionStatusStyles()} mr-2`}></div>
-              <span className="text-sm text-gray-400">{getConnectionText()}</span>
+              <div className={`h-2 w-2 rounded-full ${getConnectionStatusStyles()} mr-2`} />
+              <span className="text-sm text-gray-400">
+                {connectionStatus === 'error' ? (
+                  <button 
+                    onClick={handleRetry}
+                    className="flex items-center hover:text-[#87CEEB]"
+                  >
+                    <RefreshCw className="h-3 w-3 mr-1" />
+                    Retry Connection
+                  </button>
+                ) : (
+                  connectionStatus.charAt(0).toUpperCase() + connectionStatus.slice(1)
+                )}
+              </span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Main Content */}
       <div className="ml-64 flex-1 bg-gray-50">
         <main className="h-full">
           {renderContent()}
