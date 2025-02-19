@@ -1,373 +1,177 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Activity, DollarSign, LineChart } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { AlertCircle, TrendingUp, DollarSign, Activity } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
-const BotDashboard = ({ mode = 'live', apiBaseUrl, wsBaseUrl }) => {
-  const [demoBotData, setDemoBotData] = useState({
-    status: 'running',
+const BotDashboard = () => {
+  const [botData, setBotData] = useState({
+    status: 'loading',
+    metrics: {
+      portfolio_value: 0,
+      pnl: 0,
+      pnl_percentage: 0
+    },
     positions: [],
-    metrics: { current_equity: 100000, pnl: 0, pnl_percentage: 0 }
+    balance: { ZUSD: 100000 }
   });
-  
-  const [liveBotData, setLiveBotData] = useState({
-    status: 'stopped',
-    positions: [],
-    metrics: { current_equity: 0, pnl: 0, pnl_percentage: 0 }
-  });
-  
-  const [apiConfig, setApiConfig] = useState({ apiKey: '', apiSecret: '' });
   const [error, setError] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isActionLoading, setIsActionLoading] = useState(false);
-  const [retryCount, setRetryCount] = useState(0);
-  const wsRef = useRef(null);
-  const reconnectTimeoutRef = useRef(null);
-
-  const currentBotData = mode === 'demo' ? demoBotData : liveBotData;
-
-  const connectWebSocket = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
-
-    try {
-      const wsUrl = `${wsBaseUrl}/api/ws`;
-      console.log('Connecting to WebSocket:', wsUrl);
-      
-      wsRef.current = new WebSocket(wsUrl);
-
-      wsRef.current.onopen = () => {
-        console.log('WebSocket connected');
-        setError(null);
-        if (reconnectTimeoutRef.current) {
-          clearTimeout(reconnectTimeoutRef.current);
-          reconnectTimeoutRef.current = null;
-        }
-      };
-
-      wsRef.current.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.type === 'update' && data.mode === mode) {
-            const botData = {
-              ...data.data,
-              metrics: {
-                current_equity: parseFloat(data.data.metrics?.current_equity || 0),
-                pnl: parseFloat(data.data.metrics?.pnl || 0),
-                pnl_percentage: parseFloat(data.data.metrics?.pnl_percentage || 0)
-              }
-            };
-
-            if (mode === 'demo') {
-              setDemoBotData(prev => ({ ...prev, ...botData }));
-            } else {
-              setLiveBotData(prev => ({ ...prev, ...botData }));
-            }
-          }
-        } catch (err) {
-          console.error('WebSocket message error:', err);
-        }
-      };
-
-      wsRef.current.onclose = (event) => {
-        console.log('WebSocket disconnected:', event.code, event.reason);
-        wsRef.current = null;
-        
-        // Attempt to reconnect after 5 seconds
-        if (!reconnectTimeoutRef.current) {
-          reconnectTimeoutRef.current = setTimeout(() => {
-            reconnectTimeoutRef.current = null;
-            connectWebSocket();
-          }, 5000);
-        }
-      };
-
-      wsRef.current.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        setError('WebSocket connection error. Reconnecting...');
-      };
-
-    } catch (err) {
-      console.error('WebSocket connection error:', err);
-      setError('Failed to establish WebSocket connection');
-    }
-  }, [mode, wsBaseUrl]);
-
-  const fetchBotStatus = useCallback(async () => {
-    try {
-      const response = await fetch(`${apiBaseUrl}/api/${mode}-status`, {
-        headers: {
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
-        }
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      if (data.status === 'success') {
-        const newData = {
-          ...data.data,
-          status: mode === 'demo' ? 'running' : (data.data.status || 'stopped'),
-          metrics: {
-            current_equity: mode === 'demo' ? 100000 : parseFloat(data.data.metrics?.current_equity || 0),
-            pnl: parseFloat(data.data.metrics?.pnl || 0),
-            pnl_percentage: parseFloat(data.data.metrics?.pnl_percentage || 0)
-          }
-        };
-
-        if (mode === 'demo') {
-          setDemoBotData(prev => ({ ...prev, ...newData }));
-        } else {
-          setLiveBotData(prev => ({ ...prev, ...newData }));
-        }
-        setError(null);
-        setRetryCount(0);
-      }
-    } catch (err) {
-      console.error('Fetch error:', err);
-      if (retryCount < 3) {
-        const delay = Math.pow(2, retryCount) * 2000;
-        await new Promise(resolve => setTimeout(resolve, delay));
-        setRetryCount(prev => prev + 1);
-        await fetchBotStatus();
-      } else {
-        setError('Unable to connect to trading server');
-      }
-    }
-  }, [mode, apiBaseUrl, retryCount]);
 
   useEffect(() => {
-    let mounted = true;
-    
-    const init = async () => {
-      if (mounted) {
-        setIsLoading(true);
-        await fetchBotStatus();
-        connectWebSocket();
-        setIsLoading(false);
+    const fetchData = async () => {
+      try {
+        const response = await fetch('/api/demo-status');
+        if (!response.ok) {
+          throw new Error('Failed to fetch bot data');
+        }
+        const data = await response.json();
+        setBotData(data.data);
+        setError(null);
+      } catch (err) {
+        setError(err.message);
       }
     };
 
-    init();
-    const statusInterval = setInterval(fetchBotStatus, 10000);
+    // Initial fetch
+    fetchData();
 
-    return () => {
-      mounted = false;
-      clearInterval(statusInterval);
-      
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
-      
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-        reconnectTimeoutRef.current = null;
-      }
-    };
-  }, [fetchBotStatus, connectWebSocket]);
+    // Poll every 5 seconds
+    const interval = setInterval(fetchData, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
-  const handleApiKeyChange = (field, value) => {
-    setApiConfig(prev => ({ ...prev, [field]: value }));
-    setError(null);
-  };
-
-  const handleStartBot = async () => {
-    if (!apiConfig.apiKey || !apiConfig.apiSecret) {
-      setError('Please enter both API Key and Secret');
-      return;
-    }
-
-    try {
-      setIsActionLoading(true);
-      const response = await fetch(`${apiBaseUrl}/api/start-bot/1`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(apiConfig)
-      });
-      
-      if (!response.ok) throw new Error('Failed to start bot');
-      
-      await fetchBotStatus();
-      setError(null);
-    } catch (err) {
-      console.error('Error starting bot:', err);
-      setError('Failed to start bot. Check API keys and try again.');
-    } finally {
-      setIsActionLoading(false);
-    }
-  };
-
-  const handleStopBot = async () => {
-    try {
-      setIsActionLoading(true);
-      const response = await fetch(`${apiBaseUrl}/api/stop-bot/1`, {
-        method: 'POST'
-      });
-      
-      if (!response.ok) throw new Error('Failed to stop bot');
-      
-      await fetchBotStatus();
-      setError(null);
-    } catch (err) {
-      console.error('Error stopping bot:', err);
-      setError('Failed to stop bot. Please try again.');
-    } finally {
-      setIsActionLoading(false);
-    }
-  };
-
-  if (isLoading) {
+  if (error) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500" />
+      <div className="p-4">
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       </div>
     );
   }
 
+  const formatCurrency = (value) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(value);
+  };
+
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">
-          {mode === 'demo' ? 'Demo Trading Dashboard' : 'Live Trading Dashboard'}
-        </h1>
-        
-        <div className="flex items-center gap-4">
-          <div className={`px-3 py-1 rounded-full ${
-            currentBotData.status === 'running' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-          }`}>
-            {currentBotData.status === 'running' ? 'Active' : 'Stopped'}
-          </div>
-          {mode === 'live' && (
-            <button
-              onClick={currentBotData.status === 'running' ? handleStopBot : handleStartBot}
-              disabled={isActionLoading}
-              className={`px-4 py-2 rounded text-white ${
-                currentBotData.status === 'running' ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'
-              } ${isActionLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-            >
-              {isActionLoading 
-                ? (currentBotData.status === 'running' ? 'Stopping...' : 'Starting...') 
-                : (currentBotData.status === 'running' ? 'Stop Bot' : 'Start Bot')}
-            </button>
-          )}
+    <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
+      {/* Status Header */}
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold text-slate-800">Crypto Trading Bot</h1>
+        <div className="flex items-center space-x-2">
+          <div className={`h-3 w-3 rounded-full ${botData.running ? 'bg-green-500' : 'bg-red-500'}`} />
+          <span className="text-sm font-medium text-slate-600">
+            {botData.running ? 'Bot Active' : 'Bot Inactive'}
+          </span>
         </div>
       </div>
 
-      {error && (
-        <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded">
-          {error}
-        </div>
-      )}
-
-      {mode === 'live' && currentBotData.status !== 'running' && (
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4">API Configuration</h2>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">API Key</label>
-              <input 
-                type="text"
-                className="mt-1 block w-full rounded-md border border-gray-300 shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500"
-                value={apiConfig.apiKey}
-                onChange={(e) => handleApiKeyChange('apiKey', e.target.value)}
-                placeholder="Enter your Kraken API Key"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">API Secret</label>
-              <input 
-                type="password"
-                className="mt-1 block w-full rounded-md border border-gray-300 shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500"
-                value={apiConfig.apiSecret}
-                onChange={(e) => handleApiKeyChange('apiSecret', e.target.value)}
-                placeholder="Enter your Kraken API Secret"
-              />
-            </div>
-            <p className="text-sm text-gray-500">
-              Enter your Kraken API credentials to start live trading. Make sure your API key has trading permissions enabled.
-            </p>
+      {/* Metrics Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-white p-4 rounded-lg shadow-sm">
+          <div className="flex items-center space-x-2">
+            <DollarSign className="h-5 w-5 text-blue-500" />
+            <h2 className="text-sm font-medium text-slate-600">Portfolio Value</h2>
           </div>
+          <p className="mt-2 text-2xl font-bold text-slate-800">
+            {formatCurrency(botData.portfolio_value)}
+          </p>
         </div>
-      )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-        {[
-          {
-            title: 'Portfolio Value',
-            value: currentBotData.metrics?.current_equity?.toFixed(2) || '0.00',
-            icon: DollarSign,
-            prefix: '$'
-          },
-          {
-            title: 'P&L',
-            value: currentBotData.metrics?.pnl?.toFixed(2) || '0.00',
-            percentage: currentBotData.metrics?.pnl_percentage?.toFixed(2) || '0.00',
-            icon: Activity,
-            prefix: '$',
-            color: currentBotData.metrics?.pnl >= 0 ? 'text-green-500' : 'text-red-500'
-          },
-          {
-            title: 'Active Positions',
-            value: currentBotData.positions?.length || 0,
-            icon: LineChart
-          }
-        ].map((stat, index) => (
-          <div key={index} className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-500">{stat.title}</p>
-                <h3 className={`text-2xl font-bold ${stat.color || ''}`}>
-                  {stat.prefix || ''}{stat.value}
-                </h3>
-                {stat.percentage !== undefined && (
-                  <p className={stat.color}>
-                    {Number(stat.percentage) >= 0 ? '+' : ''}{stat.percentage}%
-                  </p>
-                )}
-              </div>
-              <stat.icon className="h-8 w-8 text-blue-500" />
-            </div>
+        <div className="bg-white p-4 rounded-lg shadow-sm">
+          <div className="flex items-center space-x-2">
+            <TrendingUp className="h-5 w-5 text-green-500" />
+            <h2 className="text-sm font-medium text-slate-600">Total P&L</h2>
           </div>
-        ))}
+          <p className="mt-2 text-2xl font-bold text-slate-800">
+            {formatCurrency(botData.pnl)}
+          </p>
+          <p className={`text-sm ${botData.pnl_percentage >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+            {botData.pnl_percentage.toFixed(2)}%
+          </p>
+        </div>
+
+        <div className="bg-white p-4 rounded-lg shadow-sm">
+          <div className="flex items-center space-x-2">
+            <Activity className="h-5 w-5 text-purple-500" />
+            <h2 className="text-sm font-medium text-slate-600">Active Positions</h2>
+          </div>
+          <p className="mt-2 text-2xl font-bold text-slate-800">
+            {botData.positions.length}
+          </p>
+        </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold mb-4">Current Positions</h2>
-        <div className="overflow-x-auto">
-          <table className="min-w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Symbol</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Entry Price</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Current Price</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">P/L %</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {!currentBotData.positions?.length ? (
+      {/* Positions Table */}
+      {botData.positions.length > 0 && (
+        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+          <div className="p-4 border-b border-slate-200">
+            <h2 className="text-lg font-medium text-slate-800">Active Positions</h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-slate-50">
                 <tr>
-                  <td colSpan="5" className="px-6 py-4 text-center text-gray-500">
-                    No active positions
-                  </td>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-slate-600">Symbol</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium text-slate-600">Quantity</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium text-slate-600">Entry Price</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium text-slate-600">Current Price</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium text-slate-600">P&L</th>
                 </tr>
-              ) : (
-                currentBotData.positions.map((position, index) => (
-                  <tr key={index}>
-                    <td className="px-6 py-4 whitespace-nowrap">{position.symbol}</td>
-                    <td className="px-6 py-4 text-right">{parseFloat(position.quantity).toFixed(8)}</td>
-                    <td className="px-6 py-4 text-right">${parseFloat(position.entry_price).toFixed(2)}</td>
-                    <td className="px-6 py-4 text-right">${parseFloat(position.current_price).toFixed(2)}</td>
-                    <td className={`px-6 py-4 text-right ${parseFloat(position.pnl) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                      {parseFloat(position.pnl) >= 0 ? '+' : ''}{parseFloat(position.pnl).toFixed(2)}%
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {botData.positions.map((position) => (
+                  <tr key={position.symbol}>
+                    <td className="px-4 py-3 text-sm text-slate-800 font-medium">{position.symbol}</td>
+                    <td className="px-4 py-3 text-sm text-slate-600 text-right">{parseFloat(position.quantity).toFixed(8)}</td>
+                    <td className="px-4 py-3 text-sm text-slate-600 text-right">{formatCurrency(parseFloat(position.entry_price))}</td>
+                    <td className="px-4 py-3 text-sm text-slate-600 text-right">{formatCurrency(parseFloat(position.current_price))}</td>
+                    <td className={`px-4 py-3 text-sm text-right font-medium ${parseFloat(position.pnl) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {formatCurrency(parseFloat(position.pnl))}
+                      <span className="ml-1 text-xs">
+                        ({parseFloat(position.pnl_percentage).toFixed(2)}%)
+                      </span>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Performance Chart */}
+      <div className="bg-white p-4 rounded-lg shadow-sm">
+        <h2 className="text-lg font-medium text-slate-800 mb-4">Portfolio Performance</h2>
+        <div className="h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart
+              data={[
+                { timestamp: 'Start', value: 100000 },
+                { timestamp: 'Current', value: botData.portfolio_value }
+              ]}
+              margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="timestamp" />
+              <YAxis />
+              <Tooltip 
+                formatter={(value) => formatCurrency(value)}
+                labelFormatter={(label) => `Time: ${label}`}
+              />
+              <Line 
+                type="monotone" 
+                dataKey="value" 
+                stroke="#2563eb" 
+                strokeWidth={2}
+              />
+            </LineChart>
+          </ResponsiveContainer>
         </div>
       </div>
     </div>
