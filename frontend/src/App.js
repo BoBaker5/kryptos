@@ -10,9 +10,8 @@ import {
 import { ErrorBoundary } from 'react-error-boundary';
 import BotDashboard from './components/BotDashboard';
 
-// API configuration with secure endpoints
-const API_BASE_URL = 'https://kryptostrading.com/api';
-const WS_BASE_URL = 'wss://kryptostrading.com/ws';
+// Direct backend connection with fallback
+const BASE_URL = 'http://150.136.163.34:8000';
 const API_TIMEOUT = 10000;
 
 function ErrorFallback({ error, resetErrorBoundary }) {
@@ -52,13 +51,12 @@ function App() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
 
-      const response = await fetch(`${API_BASE_URL}/health`, {
+      const response = await fetch(`${BASE_URL}/api/health`, {
         signal: controller.signal,
         headers: {
           'Cache-Control': 'no-cache',
           'Pragma': 'no-cache'
-        },
-        credentials: 'include'
+        }
       });
 
       clearTimeout(timeoutId);
@@ -111,8 +109,7 @@ function App() {
           >
             <BotDashboard 
               mode={currentView} 
-              apiBaseUrl={API_BASE_URL}
-              wsBaseUrl={WS_BASE_URL}
+              apiBaseUrl={BASE_URL}
               onError={setLastError}
             />
           </ErrorBoundary>
