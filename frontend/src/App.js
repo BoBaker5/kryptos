@@ -10,8 +10,8 @@ import {
 import { ErrorBoundary } from 'react-error-boundary';
 import BotDashboard from './components/BotDashboard';
 
-// API configuration
-const API_BASE_URL = 'http://150.136.163.34:8000';
+// Proxy configuration through Netlify
+const API_BASE_URL = '/api';
 const API_TIMEOUT = 10000;
 
 function ErrorFallback({ error, resetErrorBoundary }) {
@@ -55,7 +55,7 @@ function App() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
 
-      const response = await fetch(`${API_BASE_URL}/api/health`, {
+      const response = await fetch(`${API_BASE_URL}/health`, {
         signal: controller.signal,
         headers: {
           'Cache-Control': 'no-cache',
@@ -71,7 +71,6 @@ function App() {
 
       const data = await response.json();
       
-      // Update connection and bot status
       setConnectionStatus(data.status === 'healthy' ? 'connected' : 'degraded');
       setBotStatus({
         demo: data.bots?.demo?.running || false,
@@ -85,7 +84,6 @@ function App() {
       setConnectionStatus('error');
       setLastError(error.message);
       
-      // Implement exponential backoff for retries
       if (retryCount < 3) {
         const backoffDelay = Math.pow(2, retryCount) * 1000;
         setTimeout(() => {
@@ -153,19 +151,6 @@ function App() {
     }
   };
 
-  const getConnectionText = () => {
-    switch (connectionStatus) {
-      case 'connected':
-        return 'Connected';
-      case 'degraded':
-        return 'Service Degraded';
-      case 'error':
-        return lastError ? `Error: ${lastError}` : 'Connection Error';
-      default:
-        return 'Connecting...';
-    }
-  };
-
   return (
     <div className="flex min-h-screen">
       <div className="w-64 bg-[#001F3F] fixed h-full">
@@ -208,7 +193,7 @@ function App() {
                     Retry Connection
                   </button>
                 ) : (
-                  getConnectionText()
+                  connectionStatus.charAt(0).toUpperCase() + connectionStatus.slice(1)
                 )}
               </span>
             </div>
