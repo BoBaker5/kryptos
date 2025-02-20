@@ -10,8 +10,7 @@ import {
 import { ErrorBoundary } from 'react-error-boundary';
 import BotDashboard from './components/BotDashboard';
 
-// Proxy configuration through Netlify
-const API_BASE_URL = '/api';
+// API configuration
 const API_TIMEOUT = 10000;
 
 function ErrorFallback({ error, resetErrorBoundary }) {
@@ -55,7 +54,7 @@ function App() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
 
-      const response = await fetch(`${API_BASE_URL}/health`, {
+      const response = await fetch('/api/health', {
         signal: controller.signal,
         headers: {
           'Cache-Control': 'no-cache',
@@ -66,19 +65,23 @@ function App() {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        throw new Error(`Server returned status ${response.status}`);
+        const errorText = await response.text();
+        throw new Error(`Server Error (${response.status}): ${errorText || 'No additional info'}`);
       }
 
       const data = await response.json();
       
-      setConnectionStatus(data.status === 'healthy' ? 'connected' : 'degraded');
-      setBotStatus({
-        demo: data.bots?.demo?.running || false,
-        live: data.bots?.live?.running || false
-      });
-      setLastError(null);
-      setRetryCount(0);
-
+      if (data.status === 'healthy') {
+        setConnectionStatus('connected');
+        setBotStatus({
+          demo: data.bots?.demo?.running || false,
+          live: data.bots?.live?.running || false
+        });
+        setLastError(null);
+        setRetryCount(0);
+      } else {
+        throw new Error(data.error || 'Service degraded');
+      }
     } catch (error) {
       console.error('Connection error:', error);
       setConnectionStatus('error');
@@ -118,7 +121,6 @@ function App() {
           >
             <BotDashboard 
               mode={currentView} 
-              apiBaseUrl={API_BASE_URL}
               onError={setLastError}
               isRunning={botStatus[currentView]}
             />
@@ -135,19 +137,6 @@ function App() {
         );
       default:
         return null;
-    }
-  };
-
-  const getConnectionStatusStyles = () => {
-    switch (connectionStatus) {
-      case 'connected':
-        return 'bg-green-500';
-      case 'degraded':
-        return 'bg-yellow-500';
-      case 'error':
-        return 'bg-red-500';
-      default:
-        return 'bg-yellow-500';
     }
   };
 
@@ -182,7 +171,10 @@ function App() {
         <div className="absolute bottom-0 w-full p-4">
           <div className="flex items-center justify-center px-4 py-2 bg-[#002b4d] rounded">
             <div className="flex items-center">
-              <div className={`h-2 w-2 rounded-full ${getConnectionStatusStyles()} mr-2`} />
+              <div className={`h-2 w-2 rounded-full ${
+                connectionStatus === 'connected' ? 'bg-green-500' :
+                connectionStatus === 'error' ? 'bg-red-500' : 'bg-yellow-500'
+              } mr-2`} />
               <span className="text-sm text-gray-400">
                 {connectionStatus === 'error' ? (
                   <button 
