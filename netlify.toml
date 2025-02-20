@@ -8,14 +8,14 @@
   to = "http://150.136.163.34:8000/api/:splat"
   status = 200
   force = true
-  
   [redirects.headers]
-    X-Forwarded-Host = "kryptostrading.com"
-    X-Forwarded-Proto = "https"
+    X-From = "Netlify"
+    X-Origin = "https://kryptostrading.com"
     Access-Control-Allow-Origin = "*"
     Access-Control-Allow-Methods = "GET, POST, PUT, DELETE, OPTIONS"
-    Access-Control-Allow-Headers = "*"
+    Access-Control-Allow-Headers = "Authorization, Content-Type, X-Requested-With"
     Access-Control-Allow-Credentials = "true"
+    Access-Control-Max-Age = "3600"
 
 [[redirects]]
   from = "/*"
