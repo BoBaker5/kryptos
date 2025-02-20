@@ -10,8 +10,8 @@ import {
 import { ErrorBoundary } from 'react-error-boundary';
 import BotDashboard from './components/BotDashboard';
 
-// Direct backend connection with fallback
-const BASE_URL = 'http://150.136.163.34:8000';
+// API configuration
+const API_BASE_URL = 'http://150.136.163.34:8000';
 const API_TIMEOUT = 10000;
 
 function ErrorFallback({ error, resetErrorBoundary }) {
@@ -38,6 +38,10 @@ function App() {
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
   const [lastError, setLastError] = useState(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [botStatus, setBotStatus] = useState({
+    demo: false,
+    live: false
+  });
 
   const navItems = [
     { id: 'live', label: 'Live Trading', icon: LayoutDashboard },
@@ -51,7 +55,7 @@ function App() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
 
-      const response = await fetch(`${BASE_URL}/api/health`, {
+      const response = await fetch(`${API_BASE_URL}/api/health`, {
         signal: controller.signal,
         headers: {
           'Cache-Control': 'no-cache',
@@ -61,14 +65,21 @@ function App() {
 
       clearTimeout(timeoutId);
 
-      if (response.ok) {
-        const data = await response.json();
-        setConnectionStatus(data.status === 'healthy' ? 'connected' : 'degraded');
-        setLastError(null);
-        setRetryCount(0);
-      } else {
+      if (!response.ok) {
         throw new Error(`Server returned status ${response.status}`);
       }
+
+      const data = await response.json();
+      
+      // Update connection and bot status
+      setConnectionStatus(data.status === 'healthy' ? 'connected' : 'degraded');
+      setBotStatus({
+        demo: data.bots?.demo?.running || false,
+        live: data.bots?.live?.running || false
+      });
+      setLastError(null);
+      setRetryCount(0);
+
     } catch (error) {
       console.error('Connection error:', error);
       setConnectionStatus('error');
@@ -109,8 +120,9 @@ function App() {
           >
             <BotDashboard 
               mode={currentView} 
-              apiBaseUrl={BASE_URL}
+              apiBaseUrl={API_BASE_URL}
               onError={setLastError}
+              isRunning={botStatus[currentView]}
             />
           </ErrorBoundary>
         );
@@ -141,6 +153,19 @@ function App() {
     }
   };
 
+  const getConnectionText = () => {
+    switch (connectionStatus) {
+      case 'connected':
+        return 'Connected';
+      case 'degraded':
+        return 'Service Degraded';
+      case 'error':
+        return lastError ? `Error: ${lastError}` : 'Connection Error';
+      default:
+        return 'Connecting...';
+    }
+  };
+
   return (
     <div className="flex min-h-screen">
       <div className="w-64 bg-[#001F3F] fixed h-full">
@@ -160,6 +185,11 @@ function App() {
             >
               <item.icon className="h-5 w-5 mr-3" />
               {item.label}
+              {(item.id === 'demo' || item.id === 'live') && (
+                <div className={`ml-auto h-2 w-2 rounded-full ${
+                  botStatus[item.id] ? 'bg-green-500' : 'bg-red-500'
+                }`} />
+              )}
             </button>
           ))}
         </nav>
@@ -178,7 +208,7 @@ function App() {
                     Retry Connection
                   </button>
                 ) : (
-                  connectionStatus.charAt(0).toUpperCase() + connectionStatus.slice(1)
+                  getConnectionText()
                 )}
               </span>
             </div>
