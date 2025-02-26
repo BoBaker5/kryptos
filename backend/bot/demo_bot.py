@@ -895,7 +895,7 @@ class DemoKrakenBot:
         """Improved rate limiting with adaptive delays"""
         try:
             current_time = time.time()
-            time_since_last = current_time - self.last_api_call
+            time_since_last_call = current_time - self.last_api_call
             
             # Base delay
             base_delay = 1.0
@@ -908,9 +908,12 @@ class DemoKrakenBot:
                 # Gradually reduce delay if not exceeded
                 self.api_retry_delay = max(1.0, self.api_retry_delay * 0.9)
             
+            # Add jitter to prevent synchronized calls
+            jitter = random.uniform(0.1, 0.5)
+            
             # Ensure minimum spacing between calls
-            if time_since_last < base_delay:
-                await asyncio.sleep(base_delay - time_since_last + 0.1)
+            if time_since_last_call < base_delay:
+                await asyncio.sleep(base_delay - time_since_last_call + jitter)  # Add jitter
             
             self.last_api_call = time.time()
             
@@ -1041,7 +1044,7 @@ class DemoKrakenBot:
     async def get_historical_data(self, symbol: str, lookback_days: int = 7) -> pd.DataFrame:
         """Fetch and preprocess historical data with proper rate limiting"""
         try:
-            # Use the rate limiter
+            # Wait for rate limiter before making API call
             await self.wait_for_api()
             
             try:
@@ -1727,11 +1730,14 @@ class DemoKrakenBot:
                 self.update_trade_history(symbol, 'buy', quantity)  # Assuming all open orders are 'buy' for simplicity
         except Exception as e:
             self.logger.error(f"Failed to sync positions: {str(e)}")
-        
+
     async def monitor_positions(self):
         """Monitor and manage demo positions with risk management"""
         try:
             current_time = datetime.now()
+            
+            # For demo mode, we'll just use our local tracking
+            # instead of trying to call authenticated API endpoints
             
             # Iterate through all demo positions
             positions_to_close = []  # Track positions that need to be closed
@@ -1823,9 +1829,24 @@ class DemoKrakenBot:
             })
             
         except Exception as e:
-            self.logger.error(f"Error monitoring positions: {str(e)}")
-            traceback.print_exc()
-    
+            # Don't include authentication errors in the error message
+            error_msg = str(e)
+            if "Either key or secret is not set" in error_msg:
+                self.logger.info("Monitoring positions in demo mode without authentication")
+            else:
+                self.logger.error(f"Error monitoring positions: {error_msg}")
+
+    def check_and_reset_balance(self):
+        """Check if balance is too low and reset if needed"""
+        if self.demo_balance['ZUSD'] < self.min_zusd_balance:
+            self.logger.warning(f"Balance ${self.demo_balance['ZUSD']:.2f} below minimum ${self.min_zusd_balance}")
+            # Reset to a reasonable amount
+            self.demo_balance['ZUSD'] = 10000.0  # Smaller reset amount
+            self.save_demo_state()
+            self.logger.info(f"Demo balance reset to ${self.demo_balance['ZUSD']:.2f}")
+            return True
+        return False
+        
     async def initialize_position_tracking(self):
         """Initialize demo position tracking"""
         try:
@@ -2618,124 +2639,139 @@ class DemoKrakenBot:
             self.logger.error(f"Error saving demo state: {str(e)}")
     
     async def run(self):
-            """Main run loop for demo trading bot"""
-            cleanup_interval = 3600  # Cleanup every hour
-            last_cleanup = time.time()
-            cycle_count = 0
+        """Main run loop for demo trading bot"""
+        cleanup_interval = 3600  # Cleanup every hour
+        last_cleanup = time.time()
+        cycle_count = 0
+        consecutive_errors = 0
+        max_consecutive_errors = 5
+        
+        try:
+            self.logger.info("\n=== DEMO KRAKEN TRADING BOT STARTED ===")
+            self.logger.info(f"Starting Balance: ${self.demo_balance['ZUSD']:.2f}")
+            self.logger.info("Trading Pairs:")
+            for symbol, allocation in self.symbols.items():
+                self.logger.info(f"  {symbol}: {allocation*100:.1f}% allocation")
             
-            try:
-                self.logger.info("\n=== DEMO KRAKEN TRADING BOT STARTED ===")
-                self.logger.info(f"Starting Balance: ${self.demo_balance['ZUSD']:.2f}")
-                self.logger.info("Trading Pairs:")
-                for symbol, allocation in self.symbols.items():
-                    self.logger.info(f"  {symbol}: {allocation*100:.1f}% allocation")
-                
-                # Initialize rate limiter
-                rate_limiter = RateLimiter(calls_per_second=0.5)
-                
-                # Initial data collection and model training
-                self.logger.info("\nInitial Setup Phase:")
-                if not self.training_completed:
-                    self.logger.info("Starting initial model training...")
-                    training_success = await self.perform_initial_training()
-                    if not training_success:
-                        self.logger.error("Initial training failed!")
-                        return
-                    self.logger.info("Initial training completed successfully!")
-                    self.training_completed = True
-                    self.is_initially_trained = True
-                
-                # Initialize position tracking
-                self.logger.info("Initializing position tracking...")
-                await self.initialize_position_tracking()
-                
-                self.logger.info("\nStarting main trading loop...")
-                while self.running:
-                    try:
-                        cycle_count += 1
-                        current_time = time.time()
-                        self.logger.info(f"\n=== Trading Cycle {cycle_count} ===")
-                        self.logger.info(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-                        
-                        # Check if cleanup is needed
-                        if current_time - last_cleanup > cleanup_interval:
-                            self.logger.info("Performing routine cleanup...")
-                            self.cleanup_old_data()
-                            last_cleanup = current_time
-                        
-                        # Update portfolio status
-                        metrics = self.get_portfolio_metrics()
-                        self.logger.info("\nPortfolio Status:")
-                        self.logger.info(f"Current Equity: ${metrics['current_equity']:.2f}")
-                        self.logger.info(f"P&L: ${metrics['total_pnl']:.2f} ({metrics['pnl_percentage']:.2f}%)")
-                        
-                        # Save current state
-                        self.save_demo_state()
-                        
-                        # Process each trading pair
-                        for symbol in self.symbols:
-                            await rate_limiter.wait()
-                            try:
-                                self.logger.info(f"\nAnalyzing {symbol}:")
+            # Initialize rate limiter
+            rate_limiter = RateLimiter(calls_per_second=0.2)
+            
+            # Initial data collection and model training
+            self.logger.info("\nInitial Setup Phase:")
+            if not self.training_completed:
+                self.logger.info("Starting initial model training...")
+                training_success = await self.perform_initial_training()
+                if not training_success:
+                    self.logger.error("Initial training failed!")
+                    return
+                self.logger.info("Initial training completed successfully!")
+                self.training_completed = True
+                self.is_initially_trained = True
+            
+            # Initialize position tracking
+            self.logger.info("Initializing position tracking...")
+            await self.initialize_position_tracking()
+            
+            self.logger.info("\nStarting main trading loop...")
+            while self.running:
+                try:
+                    cycle_count += 1
+                    current_time = time.time()
+                    self.logger.info(f"\n=== Trading Cycle {cycle_count} ===")
+                    self.logger.info(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                    
+                    # Reset balance if needed
+                    self.check_and_reset_balance()
+                    
+                    # Check if cleanup is needed
+                    if current_time - last_cleanup > cleanup_interval:
+                        self.logger.info("Performing routine cleanup...")
+                        self.cleanup_old_data()
+                        last_cleanup = current_time
+                    
+                    # Update portfolio status
+                    metrics = self.get_portfolio_metrics()
+                    self.logger.info("\nPortfolio Status:")
+                    self.logger.info(f"Current Equity: ${metrics['current_equity']:.2f}")
+                    self.logger.info(f"P&L: ${metrics['total_pnl']:.2f} ({metrics['pnl_percentage']:.2f}%)")
+                    
+                    # Save current state
+                    self.save_demo_state()
+                    
+                    # Process each trading pair
+                    for symbol in self.symbols:
+                        await rate_limiter.wait()
+                        try:
+                            self.logger.info(f"\nAnalyzing {symbol}:")
+                            
+                            # Get market data
+                            df = await self.get_historical_data(symbol)
+                            if df is not None and not df.empty:
+                                # Calculate indicators and generate signals
+                                df = self.calculate_indicators(df)
+                                signal = self.generate_enhanced_signals(df, symbol)
                                 
-                                # Get market data
-                                df = await self.get_historical_data(symbol)
-                                if df is not None and not df.empty:
-                                    # Calculate indicators and generate signals
-                                    df = self.calculate_indicators(df)
-                                    signal = self.generate_enhanced_signals(df, symbol)
-                                    
-                                    # Get current price and position info
-                                    current_price = df['close'].iloc[-1]
-                                    in_position = symbol in self.demo_positions
-                                    
-                                    self.logger.info(f"Current Price: ${self.format_price_for_log(symbol, current_price)}")
-                                    self.logger.info(f"Position: {'Yes' if in_position else 'No'}")
-                                    self.logger.info(f"Signal: {signal['action'].upper()} (Confidence: {signal['confidence']:.3f})")
-                                    
-                                    if signal['action'] != 'hold':
-                                        if self.check_market_conditions(symbol, df):
-                                            position_size = self.calculate_position_size(symbol, signal)
-                                            if position_size >= self.min_position_value:
-                                                self.logger.info(f"Executing {signal['action'].upper()} order:")
-                                                self.logger.info(f"Position Size: ${position_size:.2f}")
-                                                
-                                                trade_result = await self.execute_trade_with_risk_management(
-                                                    symbol, signal, current_price
-                                                )
-                                                
-                                                if trade_result:
-                                                    self.logger.info("Trade executed successfully")
-                                                    self.save_demo_state()
-                                                else:
-                                                    self.logger.warning("Trade execution failed")
+                                # Get current price and position info
+                                current_price = df['close'].iloc[-1]
+                                in_position = symbol in self.demo_positions
+                                
+                                self.logger.info(f"Current Price: ${self.format_price_for_log(symbol, current_price)}")
+                                self.logger.info(f"Position: {'Yes' if in_position else 'No'}")
+                                self.logger.info(f"Signal: {signal['action'].upper()} (Confidence: {signal['confidence']:.3f})")
+                                
+                                if signal['action'] != 'hold':
+                                    if self.check_market_conditions(symbol, df):
+                                        position_size = self.calculate_position_size(symbol, signal)
+                                        if position_size >= self.min_position_value:
+                                            self.logger.info(f"Executing {signal['action'].upper()} order:")
+                                            self.logger.info(f"Position Size: ${position_size:.2f}")
+                                            
+                                            trade_result = await self.execute_trade_with_risk_management(
+                                                symbol, signal, current_price
+                                            )
+                                            
+                                            if trade_result:
+                                                self.logger.info("Trade executed successfully")
+                                                self.save_demo_state()
                                             else:
-                                                self.logger.info(f"Position size ${position_size:.2f} below minimum ${self.min_position_value}")
+                                                self.logger.warning("Trade execution failed")
                                         else:
-                                            self.logger.info("Market conditions not suitable for trading")
+                                            self.logger.info(f"Position size ${position_size:.2f} below minimum ${self.min_position_value}")
                                     else:
-                                        self.logger.info("No action needed")
-                                        
-                            except Exception as e:
-                                self.logger.error(f"Error processing {symbol}: {str(e)}")
-                                continue
-                        
-                        # Monitor positions
-                        self.logger.info("\nMonitoring existing positions...")
-                        await self.monitor_positions()
-                        
-                        # Wait for next cycle
-                        self.logger.info("\nWaiting for next cycle (150 seconds)...")
-                        await asyncio.sleep(150)
-                        
-                    except Exception as e:
-                        self.logger.error(f"Error in main loop: {str(e)}")
-                        traceback.print_exc()
+                                        self.logger.info("Market conditions not suitable for trading")
+                                else:
+                                    self.logger.info("No action needed")
+                                    
+                        except Exception as e:
+                            self.logger.error(f"Error processing {symbol}: {str(e)}")
+                            continue
+                    
+                    # Monitor positions
+                    self.logger.info("\nMonitoring existing positions...")
+                    await self.monitor_positions()
+                    
+                    # Reset consecutive errors on successful cycle
+                    consecutive_errors = 0
+                    
+                    # Wait for next cycle
+                    self.logger.info("\nWaiting for next cycle (150 seconds)...")
+                    await asyncio.sleep(150)
+                    
+                except Exception as e:
+                    consecutive_errors += 1
+                    self.logger.error(f"Error in main loop: {str(e)}")
+                    
+                    # Implement circuit breaker pattern
+                    if consecutive_errors >= max_consecutive_errors:
+                        self.logger.critical(f"Too many consecutive errors ({consecutive_errors}). Pausing for 5 minutes.")
+                        await asyncio.sleep(300)  # 5 minute cooling off period
+                        consecutive_errors = 0  # Reset after cooling off
+                    else:
                         await asyncio.sleep(5)
                         
-            except Exception as e:
-                self.logger.error(f"Fatal error in bot run loop: {str(e)}")
-                traceback.print_exc()
+        except Exception as e:
+            self.logger.error(f"Fatal error in bot run loop: {str(e)}")
+            traceback.print_exc()
 
 async def main():
     # Initialize and run the bot
