@@ -2728,7 +2728,7 @@ class DemoKrakenBot:
                 self.logger.info(f"  {symbol}: {allocation*100:.1f}% allocation")
             
             # Initialize rate limiter
-            rate_limiter = RateLimiter(calls_per_second=0.2)
+            rate_limiter = DemoRateLimiter()
             
             # Initial data collection and model training
             self.logger.info("\nInitial Setup Phase:")
