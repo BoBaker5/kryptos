@@ -694,15 +694,15 @@ class DemoKrakenBot:
             
             # Risk parameters
             self.max_drawdown = 0.10
-            self.trailing_stop_pct = 0.02
+            self.trailing_stop_pct = 0.025
             self.max_trades_per_hour = 3
             self.trade_cooldown = 300
             self.last_trade_time = {}
-            self.max_position_size = 0.3
+            self.max_position_size = 0.35
             self.min_position_value = 2.0
-            self.max_total_risk = 0.15
-            self.stop_loss_pct = 0.02
-            self.take_profit_pct = 0.07
+            self.max_total_risk = 0.25
+            self.stop_loss_pct = 0.015
+            self.take_profit_pct = 0.1
             self.min_zusd_balance = 5.0
             
             # Technical parameters
@@ -1358,91 +1358,108 @@ class DemoKrakenBot:
             return 0
     
     def generate_enhanced_signals(self, df: pd.DataFrame, symbol: str) -> dict:
-        """Generate trading signals with advanced strategy"""
+        """Generate trading signals optimized for profit capture rather than frequency"""
         try:
             if len(df) < self.sma_long:
                 return {'action': 'hold', 'confidence': 0.5}
     
             df = self.calculate_advanced_indicators(df)
             latest = df.iloc[-1]
+            prev = df.iloc[-2] if len(df) > 1 else latest
+            
+            # Get current market regime
+            market_regime = self.detect_market_regime(df)
             
             # 1. Trend Analysis
-            sma20 = df['sma_20'].iloc[-1]
-            sma50 = df['sma_50'].iloc[-1]
+            sma20 = latest['sma_20']
+            sma50 = latest['sma_50']
             trend = 1 if sma20 > sma50 else -1
             
             # 2. Momentum Indicators
             rsi = latest['rsi']
             macd = latest['macd']
             macd_signal = latest['macd_signal']
+            macd_crossover = (latest['macd'] > latest['macd_signal']) and (prev['macd'] <= prev['macd_signal'])
+            macd_crossunder = (latest['macd'] < latest['macd_signal']) and (prev['macd'] >= prev['macd_signal'])
             
             # 3. Volume Analysis
             volume_ratio = latest['volume_ma_ratio']
             
-            # 4. Volatility
+            # 4. Volatility and Bollinger Bands
             bb_width = latest['bb_width']
-            atr = latest['atr']
+            bb_position = (latest['close'] - latest['sma_20']) / (bb_width * latest['sma_20'])
             
-            # 5. Price Action
-            recent_high = df['close'].rolling(window=20).max().iloc[-1]
-            recent_low = df['close'].rolling(window=20).min().iloc[-1]
-            current_price = df['close'].iloc[-1]
+            # 5. Current price
+            current_price = latest['close']
             
-            # Calculate base confidence
-            confidence = 0.5  # Start at neutral
-    
-            if (trend > 0 and  # Uptrend
-                macd > macd_signal and  # MACD crossover
-                rsi > 45 and rsi < 65 and  # RSI in better range
-                volume_ratio > 1.5 and  # Stronger volume confirmation
+            # Initialize confidence at neutral
+            confidence = 0.5
+            
+            # STRONG BUY SIGNAL - Look for high-probability setups
+            if (market_regime in ["strong_uptrend", "low_volatility"] and  # Favorable market
+                trend > 0 and  # Uptrend
+                macd_crossover and  # Fresh MACD crossover (higher probability)
+                rsi > 40 and rsi < 65 and  # RSI in sweet spot
+                bb_position < 0.5 and  # Not overextended
                 current_price > sma20 and  # Price above short-term MA
-                current_price > recent_low * 1.03):  # Price is 3% above recent low
-                confidence += 0.20  # Stronger confidence
+                volume_ratio > 1.0):  # Normal or above volume
+                confidence = 0.65  # Strong buy
+                self.logger.info(f"Strong buy signal detected with multiple confirmations")
                             
-            # Strong sell signals
-            elif (trend < 0 and  # Downtrend
-                  macd < macd_signal and  # MACD bearish
-                  rsi < 50 and rsi > 30 and  # RSI showing weakness but not oversold
-                  current_price < sma20):  # Price below short-term MA
-                confidence -= 0.15
-    
-            # Additional adjustments
-            if volume_ratio > 1.5:  # Very high volume
-                confidence += 0.05 * np.sign(trend)
+            # STRONG SELL SIGNAL - Focus on clear reversal patterns
+            elif (market_regime in ["strong_downtrend", "high_volatility"] and  # Favorable for shorts
+                  trend < 0 and  # Downtrend
+                  macd_crossunder and  # Fresh MACD crossunder
+                  rsi < 60 and rsi > 30 and  # RSI showing weakness but not oversold
+                  bb_position > -0.5 and  # Not overextended
+                  current_price < sma20 and  # Price below short-term MA
+                  volume_ratio > 1.0):  # Normal or above volume
+                confidence = 0.35  # Strong sell
+                self.logger.info(f"Strong sell signal detected with multiple confirmations")
                 
-            if bb_width > 1.2:  # High volatility
-                confidence = 0.5 + (confidence - 0.5) * 0.8  # Reduce conviction
+            # OPPORTUNISTIC BUY - For high-potential setups like oversold bounces
+            elif (rsi < 35 and  # Oversold
+                  rsi > prev['rsi'] and  # RSI turning up
+                  bb_position < -0.8 and  # Near lower Bollinger Band
+                  volume_ratio > 1.2):  # Rising volume
+                confidence = 0.62  # Opportunistic buy
+                self.logger.info(f"Opportunistic buy on oversold conditions with volume confirmation")
                 
-            # Risk management
-            in_position = symbol in self.demo_positions
-            if in_position:
-                position = self.demo_positions[symbol]
-                entry_price = position['entry_price']
+            # BREAKOUT BUY - Capture momentum breakouts
+            elif (current_price > df['close'].rolling(20).max().shift(1).iloc[-1] and  # Breaking 20-day high
+                  volume_ratio > 1.5 and  # Strong volume confirmation
+                  rsi < 70):  # Not overbought yet
+                confidence = 0.60  # Breakout buy
+                self.logger.info(f"Breakout buy signal with volume confirmation")
+                  
+            # Adjust based on market regime
+            if market_regime == "strong_uptrend" and confidence > 0.5:
+                confidence += 0.05  # Enhance buy signals in strong uptrends
+            elif market_regime == "strong_downtrend" and confidence < 0.5:
+                confidence -= 0.05  # Enhance sell signals in strong downtrends
+            elif market_regime == "consolidation":
+                # In consolidation, move confidence toward neutral
+                confidence = 0.5 + (confidence - 0.5) * 0.7
                 
-                # Take profit at 5% gain
-                if current_price >= entry_price * 1.05:
-                    confidence = 0.3  # Trigger sell
-                    
-                # Stop loss at 2% loss
-                elif current_price <= entry_price * 0.98:
-                    confidence = 0.3  # Trigger sell
-    
             # Ensure confidence stays within bounds
             confidence = max(0.3, min(0.7, confidence))
             
-            # Determine action
-            if confidence > 0.55:
+            # Determine action - Asymmetric thresholds for efficient capital use
+            if confidence > 0.58:  # Higher threshold for buys to be more selective
                 action = 'buy'
-            elif confidence < 0.45:
+            elif confidence < 0.42:  # Lower threshold for sells
                 action = 'sell'
             else:
                 action = 'hold'
     
             # Log analysis
             self.logger.info(f"{symbol} Analysis:")
+            self.logger.info(f"Market Regime: {market_regime}")
             self.logger.info(f"Trend: {'Bullish' if trend > 0 else 'Bearish'}")
             self.logger.info(f"RSI: {rsi:.2f}")
             self.logger.info(f"Volume Ratio: {volume_ratio:.2f}")
+            self.logger.info(f"MACD: {macd:.6f}, Signal: {macd_signal:.6f}")
+            self.logger.info(f"BB Position: {bb_position:.2f}")
             self.logger.info(f"Final Signal: {action.upper()} ({confidence:.3f})")
             
             return {'action': action, 'confidence': confidence}
@@ -1450,7 +1467,7 @@ class DemoKrakenBot:
         except Exception as e:
             self.logger.error(f"Error generating signals: {str(e)}")
             return {'action': 'hold', 'confidence': 0.50}
-        
+
     def get_minimum_order_requirements(self, symbol: str) -> dict:
         """Get minimum order requirements for a given symbol"""
         try:
@@ -2338,17 +2355,25 @@ class DemoKrakenBot:
                 self.logger.warning(f"Balance ${total_usd_balance} below minimum ${self.min_zusd_balance}")
                 return 0
                 
-            # Calculate position size based on allocation
+            # Calculate base position size based on allocation
             allocation = self.symbols[symbol]
-            position_size = min(
+            base_position_size = min(
                 total_usd_balance * allocation,
                 total_usd_balance * self.max_position_size
             )
             
-            # Ensure minimum position size
-            if position_size < self.min_position_value:
-                self.logger.warning(f"Position size ${position_size:.2f} below minimum ${self.min_position_value}")
-                return 0
+            # ENHANCED: Scale position size based on signal confidence
+            # Neutral confidence is 0.5, so we scale up/down based on deviation from neutral
+            confidence_factor = 1.0
+            if 'confidence' in signal:
+                # Normalize confidence to 0-1 scale from the 0.3-0.7 range
+                normalized_confidence = (signal['confidence'] - 0.5) * 5  # -1 to +1 range
+                
+                # Exponential scaling for high-conviction signals
+                if signal['action'] == 'buy' and normalized_confidence > 0:
+                    confidence_factor = 1.0 + (normalized_confidence * 0.5)  # Up to 1.5x size for highest conviction
+                
+            position_size = base_position_size * confidence_factor
             
             # Adjust position size based on volatility
             current_data = self.get_current_market_data(symbol)
@@ -2360,9 +2385,24 @@ class DemoKrakenBot:
                     self.logger.info(f"High volatility ({volatility:.2%}), reducing position size by 30%")
                 # Increase position size in low volatility
                 elif volatility < 0.01:  # 1% daily volatility is low
-                    position_size *= 1.2  # Increase by 20%
-                    self.logger.info(f"Low volatility ({volatility:.2%}), increasing position size by 20%")
+                    position_size *= 1.3  # Increase by 30% (more aggressive)
+                    self.logger.info(f"Low volatility ({volatility:.2%}), increasing position size by 30%")
+                    
+            # Add market regime adjustment
+            if current_data is not None:
+                market_regime = self.detect_market_regime(current_data)
+                if market_regime == "strong_uptrend" and signal['action'] == 'buy':
+                    position_size *= 1.2  # Increase size in strong uptrends
+                    self.logger.info(f"Strong uptrend detected, increasing position size by 20%")
+                elif market_regime == "strong_downtrend" and signal['action'] == 'sell':
+                    position_size *= 1.2  # Increase size in strong downtrends for shorts
+                    self.logger.info(f"Strong downtrend detected, increasing position size by 20%")
             
+            # Ensure minimum position size
+            if position_size < self.min_position_value:
+                self.logger.warning(f"Position size ${position_size:.2f} below minimum ${self.min_position_value}")
+                return 0
+                
             return position_size
             
         except Exception as e:
@@ -2370,19 +2410,40 @@ class DemoKrakenBot:
             return 0
 
     def detect_market_regime(self, df: pd.DataFrame) -> str:
-        # Calculate market trend strength
-        adx = df['adx'].iloc[-1]
-        bb_width = df['bb_width'].iloc[-1]
-        
-        if adx > 25 and df['sma_20'].iloc[-1] > df['sma_50'].iloc[-1]:
-            return "strong_uptrend"
-        elif adx > 25 and df['sma_20'].iloc[-1] < df['sma_50'].iloc[-1]:
-            return "strong_downtrend"
-        elif bb_width < 0.5:
-            return "consolidation"
-        else:
+        """More sophisticated market regime detection"""
+        try:
+            # Price momentum
+            price_momentum = df['close'].pct_change(10).iloc[-1]
+            
+            # Volatility
+            volatility = df['returns'].rolling(20).std().iloc[-1]
+            
+            # Trend strength
+            adx = df['adx'].iloc[-1] if 'adx' in df.columns else 25
+            
+            # Moving average relationship
+            ma_relationship = df['sma_20'].iloc[-1] / df['sma_50'].iloc[-1] - 1
+            
+            # Volume trend
+            volume_trend = df['volume_ma_ratio'].iloc[-1] if 'volume_ma_ratio' in df.columns else 1.0
+            
+            # Classify regime
+            if adx > 30 and ma_relationship > 0.02 and volume_trend > 1.2:
+                return "strong_uptrend"  # Strong bullish trend with volume confirmation
+            elif adx > 30 and ma_relationship < -0.02 and volume_trend > 1.2:
+                return "strong_downtrend"  # Strong bearish trend with volume confirmation
+            elif adx < 20 and abs(ma_relationship) < 0.01:
+                return "consolidation"  # Sideways market
+            elif volatility > 0.03:
+                return "high_volatility"  # High volatility regime
+            elif volatility < 0.01:
+                return "low_volatility"  # Low volatility regime
+            else:
+                return "mixed"  # Mixed or unclear market conditions
+                
+        except Exception as e:
+            self.logger.error(f"Error detecting market regime: {str(e)}")
             return "mixed"
-
 
     def check_excessive_correlation(self) -> bool:
         buy_count = 0
@@ -2520,11 +2581,9 @@ class DemoKrakenBot:
             return False
     
     def handle_demo_position_monitoring(self):
-        """Special handler for demo mode positions that doesn't require API authentication"""
+        """Enhanced position monitoring with dynamic profit targets"""
         try:
             current_time = datetime.now()
-            
-            # For demo mode, we only need to use our locally tracked positions
             positions_to_close = []  # Track positions that need to be closed
             
             for symbol, position in self.demo_positions.items():
@@ -2535,6 +2594,8 @@ class DemoKrakenBot:
                     
                 entry_price = position['entry_price']
                 quantity = position['volume']
+                entry_time = position['entry_time']
+                position_age = (current_time - entry_time).total_seconds() / 3600  # Hours
                 
                 # Calculate position metrics
                 position_value = quantity * current_price
@@ -2552,8 +2613,19 @@ class DemoKrakenBot:
                 self.logger.info(f"Current: ${current_price:.8f}")
                 self.logger.info(f"P&L: ${unrealized_pnl:.2f} ({pnl_percentage:.2f}%)")
                 
-                # Check take profit
-                if pnl_percentage >= self.take_profit_pct * 100:
+                # ENHANCED: Dynamic take-profit based on position age and market conditions
+                # Scale take-profit down over time to avoid holding too long
+                dynamic_take_profit = self.take_profit_pct
+                
+                # For positions older than 48 hours, gradually reduce profit target
+                if position_age > 48:
+                    # Reduce target by up to 50% based on age (max age considered: 120 hours)
+                    age_factor = min(1.0, (position_age - 48) / 72)
+                    dynamic_take_profit = max(self.take_profit_pct * (1 - (age_factor * 0.5)), self.take_profit_pct * 0.5)
+                    self.logger.info(f"Position age: {position_age:.1f} hours, dynamic take-profit: {dynamic_take_profit*100:.1f}%")
+                
+                # Check take profit with dynamic target
+                if pnl_percentage >= dynamic_take_profit * 100:
                     self.logger.info(f"Take profit triggered for {symbol} at {pnl_percentage:.2f}%")
                     positions_to_close.append({
                         'symbol': symbol,
@@ -2562,8 +2634,15 @@ class DemoKrakenBot:
                     })
                     continue
                 
-                # Check stop loss
-                if pnl_percentage <= -self.stop_loss_pct * 100:
+                # ENHANCED: Tighten stop-loss for positions in profit
+                # Once we reach 50% of target profit, move stop-loss to breakeven
+                if pnl_percentage >= dynamic_take_profit * 50:
+                    effective_stop_loss = 0  # Breakeven
+                else:
+                    effective_stop_loss = self.stop_loss_pct
+                
+                # Check stop loss with potential breakeven adjustment
+                if pnl_percentage <= -effective_stop_loss * 100:
                     self.logger.info(f"Stop loss triggered for {symbol} at {pnl_percentage:.2f}%")
                     positions_to_close.append({
                         'symbol': symbol,
@@ -2586,6 +2665,17 @@ class DemoKrakenBot:
                         })
                         continue
                 
+                # ENHANCED: Time-based exit for stagnant positions
+                # Exit positions that haven't made significant progress in 72 hours
+                if position_age > 72 and abs(pnl_percentage) < 2.0:
+                    self.logger.info(f"Time-based exit for stagnant position {symbol} after {position_age:.1f} hours")
+                    positions_to_close.append({
+                        'symbol': symbol,
+                        'reason': 'time_exit',
+                        'price': current_price
+                    })
+                    continue
+                
                 # Check maximum drawdown
                 if pnl_percentage <= -self.max_drawdown * 100:
                     self.logger.info(f"Maximum drawdown triggered for {symbol} at {pnl_percentage:.2f}%")
@@ -2596,7 +2686,7 @@ class DemoKrakenBot:
                     })
                     continue
                     
-            # Close positions that triggered risk management rules
+            # Close positions that triggered exit conditions
             for close_order in positions_to_close:
                 symbol = close_order['symbol']
                 self.execute_trade_demo(
@@ -2617,7 +2707,7 @@ class DemoKrakenBot:
         except Exception as e:
             self.logger.error(f"Error in demo position monitoring: {str(e)}")
             return False
-    
+            
     def init_database(self):  # Changed method name to avoid conflict
         """Initialize database tables"""
         try:
