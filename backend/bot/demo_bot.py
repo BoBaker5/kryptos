@@ -1401,36 +1401,46 @@ class DemoKrakenBot:
             self.logger.info(f"Starting signal calculation with confidence={confidence}")
             
             # Apply basic adjustments to help avoid constant 0.5 confidence
-            # Price momentum up
+            # Price momentum up - increased adjustment
             if current_price > df['close'].shift(5).iloc[-1]:
-                confidence += 0.01
-                self.logger.info(f"Price above 5 periods ago: +0.01 -> {confidence:.3f}")
-            # Price momentum down
+                confidence += 0.025  # Increased from 0.01
+                self.logger.info(f"Price above 5 periods ago: +0.025 -> {confidence:.3f}")
+            # Price momentum down - increased adjustment
             elif current_price < df['close'].shift(5).iloc[-1]:
-                confidence -= 0.01
-                self.logger.info(f"Price below 5 periods ago: -0.01 -> {confidence:.3f}")
+                confidence -= 0.025  # Increased from 0.01
+                self.logger.info(f"Price below 5 periods ago: -0.025 -> {confidence:.3f}")
                 
-            # RSI adjustments - simplified version
+            # RSI adjustments - stronger adjustments
             if rsi > 60:
-                confidence += 0.03
-                self.logger.info(f"RSI above 60: +0.03 -> {confidence:.3f}")
+                confidence += 0.035  # Increased from 0.03
+                self.logger.info(f"RSI above 60: +0.035 -> {confidence:.3f}")
             elif rsi < 40:
-                confidence -= 0.03
-                self.logger.info(f"RSI below 40: -0.03 -> {confidence:.3f}")
+                confidence -= 0.035  # Increased from 0.03
+                self.logger.info(f"RSI below 40: -0.035 -> {confidence:.3f}")
                 
-            # Trend direction
+            # Trend direction - stronger trend influence
             if trend > 0:
-                confidence += 0.02
-                self.logger.info(f"Bullish trend: +0.02 -> {confidence:.3f}")
+                confidence += 0.03  # Increased from 0.02
+                self.logger.info(f"Bullish trend: +0.03 -> {confidence:.3f}")
             else:
-                confidence -= 0.02
-                self.logger.info(f"Bearish trend: -0.02 -> {confidence:.3f}")
+                confidence -= 0.03  # Increased from 0.02
+                self.logger.info(f"Bearish trend: -0.03 -> {confidence:.3f}")
                 
-            # Check for high volume
+            # Volume impact - enhanced
             if volume_ratio > 1.5:
                 # In the direction of trend
-                confidence += 0.03 * np.sign(trend)
-                self.logger.info(f"High volume ({volume_ratio:.2f}) in trend direction: {0.03 * np.sign(trend):.2f} -> {confidence:.3f}")
+                confidence += 0.04 * np.sign(trend)  # Increased from 0.03
+                self.logger.info(f"High volume ({volume_ratio:.2f}) in trend direction: {0.04 * np.sign(trend):.2f} -> {confidence:.3f}")
+                
+            # Price acceleration (checking if momentum is accelerating)
+            recent_returns = df['close'].pct_change(3).iloc[-3:]
+            if len(recent_returns) >= 3:
+                if recent_returns.is_monotonic_increasing:  # Consistently accelerating upward
+                    confidence += 0.02
+                    self.logger.info(f"Price momentum accelerating upward: +0.02 -> {confidence:.3f}")
+                elif recent_returns.is_monotonic_decreasing:  # Consistently accelerating downward
+                    confidence -= 0.02
+                    self.logger.info(f"Price momentum accelerating downward: -0.02 -> {confidence:.3f}")
             
             # STRONG BUY SIGNAL - Look for high-probability setups
             if (market_regime in ["strong_uptrend", "low_volatility"] and  # Favorable market
@@ -1487,10 +1497,10 @@ class DemoKrakenBot:
             # Ensure confidence stays within bounds
             confidence = max(0.3, min(0.7, confidence))
             
-            # Determine action - Asymmetric thresholds for efficient capital use
-            if confidence > 0.58:  # Higher threshold for buys to be more selective
+            # Determine action - Tighter thresholds for more trades
+            if confidence > 0.53:  # Reduced from 0.58
                 action = 'buy'
-            elif confidence < 0.42:  # Lower threshold for sells
+            elif confidence < 0.47:  # Increased from 0.42
                 action = 'sell'
             else:
                 action = 'hold'
@@ -2441,7 +2451,7 @@ class DemoKrakenBot:
             return 0
 
     def detect_market_regime(self, df: pd.DataFrame) -> str:
-        """More sophisticated market regime detection"""
+        """More aggressive market regime detection for profitable trading"""
         try:
             # Price momentum
             price_momentum = df['close'].pct_change(10).iloc[-1]
@@ -2458,16 +2468,16 @@ class DemoKrakenBot:
             # Volume trend
             volume_trend = df['volume_ma_ratio'].iloc[-1] if 'volume_ma_ratio' in df.columns else 1.0
             
-            # Classify regime
-            if adx > 30 and ma_relationship > 0.02 and volume_trend > 1.2:
-                return "strong_uptrend"  # Strong bullish trend with volume confirmation
-            elif adx > 30 and ma_relationship < -0.02 and volume_trend > 1.2:
-                return "strong_downtrend"  # Strong bearish trend with volume confirmation
-            elif adx < 20 and abs(ma_relationship) < 0.01:
+            # Classify regime - more sensitive thresholds
+            if adx > 25 and ma_relationship > 0.01 and volume_trend > 1.0:  # Reduced thresholds
+                return "strong_uptrend"  # More likely to identify uptrends
+            elif adx > 25 and ma_relationship < -0.01 and volume_trend > 1.0:  # Reduced thresholds
+                return "strong_downtrend"  # More likely to identify downtrends
+            elif adx < 15 and abs(ma_relationship) < 0.008:  # Tightened band
                 return "consolidation"  # Sideways market
-            elif volatility > 0.03:
+            elif volatility > 0.025:  # Lower threshold, catches more volatile markets
                 return "high_volatility"  # High volatility regime
-            elif volatility < 0.01:
+            elif volatility < 0.008:  # Adjusted for more low volatility identification
                 return "low_volatility"  # Low volatility regime
             else:
                 return "mixed"  # Mixed or unclear market conditions
