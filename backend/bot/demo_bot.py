@@ -637,6 +637,8 @@ class DemoKrakenBot:
             self.last_api_call = time.time()
             self.api_retry_delay = 1.0
             self.max_retry_delay = 60
+            # Initialize the demo rate limiter
+            self.demo_rate_limiter = DemoRateLimiter()
             
             # Add randomness for jitter in rate limiting
             import random
@@ -2798,7 +2800,7 @@ class DemoKrakenBot:
                                             self.logger.info(f"Executing {signal['action'].upper()} order:")
                                             self.logger.info(f"Position Size: ${position_size:.2f}")
                                             
-                                            trade_result = await self.execute_trade_with_risk_management(
+                                            trade_result = self.execute_trade_demo(
                                                 symbol, signal, current_price
                                             )
                                             
@@ -2818,9 +2820,14 @@ class DemoKrakenBot:
                             self.logger.error(f"Error processing {symbol}: {str(e)}")
                             continue
                     
+                    
                     # Monitor positions
                     self.logger.info("\nMonitoring existing positions...")
-                    await self.monitor_positions()
+                    if len(self.demo_positions) > 0:
+                        # Use special demo handler instead of API-based monitoring
+                        self.handle_demo_position_monitoring()
+                    else:
+                        self.logger.info("No positions to monitor")
                     
                     # Reset consecutive errors on successful cycle
                     consecutive_errors = 0
