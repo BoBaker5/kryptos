@@ -572,18 +572,61 @@ class PositionTracker:
         return None
 
 class RateLimiter:
-    def __init__(self, calls_per_second=1):
+    def __init__(self, calls_per_second=0.2):  # More conservative rate - only 1 call per 5 seconds
         self.calls_per_second = calls_per_second
         self.last_call = time.time()
         self.lock = asyncio.Lock()
+        self.backoff_time = 1.0
+        self.error_count = 0
+        self.max_backoff = 60.0  # Maximum backoff of 60 seconds
+        
+        # Add randomness to prevent synchronized calls
+        import random
+        self.random = random
 
     async def wait(self):
+        """Wait to respect rate limits with added jitter"""
         async with self.lock:
             now = time.time()
             time_since_last = now - self.last_call
-            if time_since_last < (1.0 / self.calls_per_second):
-                await asyncio.sleep((1.0 / self.calls_per_second) - time_since_last)
+            
+            # Add jitter (randomness) to prevent synchronized calls
+            jitter = self.random.uniform(0.1, 0.5)
+            
+            # Calculate wait time with buffer
+            wait_time = max(0, (1.0 / self.calls_per_second) - time_since_last + jitter)
+            
+            if wait_time > 0:
+                await asyncio.sleep(wait_time)
+            
             self.last_call = time.time()
+            
+    async def handle_rate_limit_error(self, seconds_exceeded=0):
+        """Handle rate limit exceeded errors with exponential backoff"""
+        # Track errors
+        self.error_count += 1
+        
+        # If we know how much we exceeded by, use that information
+        if seconds_exceeded > 0:
+            # Add a buffer to the exceeded time
+            wait_time = seconds_exceeded + 1.0
+        else:
+            # Exponential backoff with cap
+            self.backoff_time = min(self.max_backoff, self.backoff_time * 2)
+            wait_time = self.backoff_time
+        
+        # Log the backoff
+        logging.info(f"Rate limit exceeded, backing off for {wait_time:.2f} seconds (error #{self.error_count})")
+        
+        # Wait the required time
+        await asyncio.sleep(wait_time)
+        
+    def reset_backoff(self):
+        """Reset backoff after successful operations"""
+        if self.error_count > 0:
+            logging.info(f"Resetting rate limiter after {self.error_count} errors")
+        self.backoff_time = 1.0
+        self.error_count = 0
 
 class DemoKrakenBot:
     def __init__(self):
@@ -598,6 +641,10 @@ class DemoKrakenBot:
             self.last_api_call = time.time()
             self.api_retry_delay = 1.0
             self.max_retry_delay = 60
+            
+            # Add randomness for jitter in rate limiting
+            import random
+            self.random = random
             
             # Initialize Kraken API
             self.kraken = krakenex.API()
@@ -675,14 +722,52 @@ class DemoKrakenBot:
             # Performance tracking
             self.performance_metrics = {}
             
+            # API call tracking and rate limiting
+            self.api_calls = {
+                'total': 0,
+                'rate_limited': 0,
+                'errors': 0,
+                'last_hour': {
+                    'count': 0,
+                    'timestamp': datetime.now()
+                }
+            }
+            
+            # Reset API call statistics hourly
+            self.api_call_reset_task = asyncio.create_task(self._reset_api_call_stats_periodically())
+            
             # Load saved state
             self.load_demo_state()
+            
+            # Initialize with a higher minimum balance to avoid warnings
+            if self.demo_balance['ZUSD'] < self.min_zusd_balance:
+                self.demo_balance['ZUSD'] = 10000.0
+                self.logger.info(f"Initial balance too low, reset to ${self.demo_balance['ZUSD']}")
             
             self.logger.info("Demo bot initialization completed successfully")
             
         except Exception as e:
             self.logger.error(f"Initialization error: {str(e)}")
             raise
+    
+    async def _reset_api_call_stats_periodically(self):
+        """Reset API call statistics every hour"""
+        try:
+            while self.running:
+                await asyncio.sleep(3600)  # 1 hour
+                current_time = datetime.now()
+                
+                # Log and reset stats
+                hourly_calls = self.api_calls['last_hour']['count']
+                self.logger.info(f"API calls in last hour: {hourly_calls}")
+                
+                # Reset hourly count
+                self.api_calls['last_hour'] = {
+                    'count': 0,
+                    'timestamp': current_time
+                }
+        except Exception as e:
+            self.logger.error(f"Error in API stats reset task: {str(e)}")
 
     def load_key(self, api_key: str, secret_key: str):
         """Load API credentials for demo bot"""
@@ -954,33 +1039,59 @@ class DemoKrakenBot:
             return str(price)
     
     async def get_historical_data(self, symbol: str, lookback_days: int = 7) -> pd.DataFrame:
-        """Fetch and preprocess historical data"""
+        """Fetch and preprocess historical data with proper rate limiting"""
         try:
+            # Use the rate limiter
             await self.wait_for_api()
             
-            since = time.time() - (lookback_days * 24 * 60 * 60)
-            ohlc, last = self.k.get_ohlc_data(symbol, interval=self.timeframe, since=since)
+            try:
+                since = time.time() - (lookback_days * 24 * 60 * 60)
+                ohlc, last = self.k.get_ohlc_data(symbol, interval=self.timeframe, since=since)
+                
+                # On success, reduce the retry delay gradually
+                self.api_retry_delay = max(1.0, self.api_retry_delay * 0.9)
+                
+                if ohlc is not None and not ohlc.empty:
+                    # Convert all numeric columns to float
+                    numeric_columns = ['open', 'high', 'low', 'close', 'volume']
+                    for col in numeric_columns:
+                        if col in ohlc.columns:
+                            ohlc[col] = pd.to_numeric(ohlc[col], errors='coerce')
+                    
+                    # Remove any rows with NaN values in critical columns
+                    ohlc = ohlc.dropna(subset=['close', 'volume'])
+                    
+                    # Ensure positive values
+                    ohlc = ohlc[ohlc['close'] > 0]
+                    ohlc = ohlc[ohlc['volume'] > 0]
+                    
+                    self.logger.info(f"Successfully fetched {len(ohlc)} rows of data for {symbol}")
+                    return ohlc
+                    
+                self.logger.warning(f"No historical data returned for {symbol}")
+                return pd.DataFrame()
+                
+            except Exception as e:
+                error_str = str(e)
+                if "public call frequency exceeded" in error_str:
+                    # Extract the exceeded time if available
+                    import re
+                    seconds_match = re.search(r'seconds=(\d+\.\d+)', error_str)
+                    seconds_exceeded = float(seconds_match.group(1)) if seconds_match else 0
+                    
+                    # Apply an exponential backoff
+                    self.api_retry_delay = min(self.max_retry_delay, self.api_retry_delay * 2)
+                    backoff_time = self.api_retry_delay + seconds_exceeded
+                    
+                    self.logger.warning(f"Rate limit exceeded, backing off for {backoff_time:.2f} seconds")
+                    await asyncio.sleep(backoff_time)
+                    
+                    # Retry recursively after backoff
+                    return await self.get_historical_data(symbol, lookback_days)
+                else:
+                    # For other exceptions, re-raise to be caught by the outer try/except
+                    raise
             
-            if ohlc is not None and not ohlc.empty:
-                # Convert all numeric columns to float
-                numeric_columns = ['open', 'high', 'low', 'close', 'volume']
-                for col in numeric_columns:
-                    if col in ohlc.columns:
-                        ohlc[col] = pd.to_numeric(ohlc[col], errors='coerce')
-                
-                # Remove any rows with NaN values in critical columns
-                ohlc = ohlc.dropna(subset=['close', 'volume'])
-                
-                # Ensure positive values
-                ohlc = ohlc[ohlc['close'] > 0]
-                ohlc = ohlc[ohlc['volume'] > 0]
-                
-                self.logger.info(f"Successfully fetched {len(ohlc)} rows of data for {symbol}")
-                return ohlc
-                
-            self.logger.warning(f"No historical data returned for {symbol}")
-            return pd.DataFrame()
-        
         except Exception as e:
             self.logger.error(f"Error fetching historical data for {symbol}: {str(e)}")
             return pd.DataFrame()
