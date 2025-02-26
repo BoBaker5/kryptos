@@ -1387,13 +1387,50 @@ class DemoKrakenBot:
             
             # 4. Volatility and Bollinger Bands
             bb_width = latest['bb_width']
-            bb_position = (latest['close'] - latest['sma_20']) / (bb_width * latest['sma_20'])
-            
+            bb_position = latest['bb_position'] if 'bb_position' in latest else 0
+            if pd.isna(bb_position):
+                bb_position = 0
+                
             # 5. Current price
             current_price = latest['close']
             
             # Initialize confidence at neutral
             confidence = 0.5
+            
+            # Add more detailed logging to debug signal calculation
+            self.logger.info(f"Starting signal calculation with confidence={confidence}")
+            
+            # Apply basic adjustments to help avoid constant 0.5 confidence
+            # Price momentum up
+            if current_price > df['close'].shift(5).iloc[-1]:
+                confidence += 0.01
+                self.logger.info(f"Price above 5 periods ago: +0.01 -> {confidence:.3f}")
+            # Price momentum down
+            elif current_price < df['close'].shift(5).iloc[-1]:
+                confidence -= 0.01
+                self.logger.info(f"Price below 5 periods ago: -0.01 -> {confidence:.3f}")
+                
+            # RSI adjustments - simplified version
+            if rsi > 60:
+                confidence += 0.03
+                self.logger.info(f"RSI above 60: +0.03 -> {confidence:.3f}")
+            elif rsi < 40:
+                confidence -= 0.03
+                self.logger.info(f"RSI below 40: -0.03 -> {confidence:.3f}")
+                
+            # Trend direction
+            if trend > 0:
+                confidence += 0.02
+                self.logger.info(f"Bullish trend: +0.02 -> {confidence:.3f}")
+            else:
+                confidence -= 0.02
+                self.logger.info(f"Bearish trend: -0.02 -> {confidence:.3f}")
+                
+            # Check for high volume
+            if volume_ratio > 1.5:
+                # In the direction of trend
+                confidence += 0.03 * np.sign(trend)
+                self.logger.info(f"High volume ({volume_ratio:.2f}) in trend direction: {0.03 * np.sign(trend):.2f} -> {confidence:.3f}")
             
             # STRONG BUY SIGNAL - Look for high-probability setups
             if (market_regime in ["strong_uptrend", "low_volatility"] and  # Favorable market
@@ -1404,7 +1441,7 @@ class DemoKrakenBot:
                 current_price > sma20 and  # Price above short-term MA
                 volume_ratio > 1.0):  # Normal or above volume
                 confidence = 0.65  # Strong buy
-                self.logger.info(f"Strong buy signal detected with multiple confirmations")
+                self.logger.info(f"Strong buy signal detected with multiple confirmations: 0.65")
                             
             # STRONG SELL SIGNAL - Focus on clear reversal patterns
             elif (market_regime in ["strong_downtrend", "high_volatility"] and  # Favorable for shorts
@@ -1415,7 +1452,7 @@ class DemoKrakenBot:
                   current_price < sma20 and  # Price below short-term MA
                   volume_ratio > 1.0):  # Normal or above volume
                 confidence = 0.35  # Strong sell
-                self.logger.info(f"Strong sell signal detected with multiple confirmations")
+                self.logger.info(f"Strong sell signal detected with multiple confirmations: 0.35")
                 
             # OPPORTUNISTIC BUY - For high-potential setups like oversold bounces
             elif (rsi < 35 and  # Oversold
@@ -1423,23 +1460,29 @@ class DemoKrakenBot:
                   bb_position < -0.8 and  # Near lower Bollinger Band
                   volume_ratio > 1.2):  # Rising volume
                 confidence = 0.62  # Opportunistic buy
-                self.logger.info(f"Opportunistic buy on oversold conditions with volume confirmation")
+                self.logger.info(f"Opportunistic buy on oversold conditions with volume confirmation: 0.62")
                 
             # BREAKOUT BUY - Capture momentum breakouts
             elif (current_price > df['close'].rolling(20).max().shift(1).iloc[-1] and  # Breaking 20-day high
                   volume_ratio > 1.5 and  # Strong volume confirmation
                   rsi < 70):  # Not overbought yet
                 confidence = 0.60  # Breakout buy
-                self.logger.info(f"Breakout buy signal with volume confirmation")
+                self.logger.info(f"Breakout buy signal with volume confirmation: 0.60")
                   
             # Adjust based on market regime
             if market_regime == "strong_uptrend" and confidence > 0.5:
+                old_confidence = confidence
                 confidence += 0.05  # Enhance buy signals in strong uptrends
+                self.logger.info(f"Strong uptrend adjustment: +0.05 -> {confidence:.3f}")
             elif market_regime == "strong_downtrend" and confidence < 0.5:
+                old_confidence = confidence
                 confidence -= 0.05  # Enhance sell signals in strong downtrends
+                self.logger.info(f"Strong downtrend adjustment: -0.05 -> {confidence:.3f}")
             elif market_regime == "consolidation":
                 # In consolidation, move confidence toward neutral
+                old_confidence = confidence
                 confidence = 0.5 + (confidence - 0.5) * 0.7
+                self.logger.info(f"Consolidation adjustment: {old_confidence:.3f} -> {confidence:.3f}")
                 
             # Ensure confidence stays within bounds
             confidence = max(0.3, min(0.7, confidence))
@@ -1459,6 +1502,7 @@ class DemoKrakenBot:
             self.logger.info(f"RSI: {rsi:.2f}")
             self.logger.info(f"Volume Ratio: {volume_ratio:.2f}")
             self.logger.info(f"MACD: {macd:.6f}, Signal: {macd_signal:.6f}")
+            self.logger.info(f"MACD Crossover: {macd_crossover}, Crossunder: {macd_crossunder}")
             self.logger.info(f"BB Position: {bb_position:.2f}")
             self.logger.info(f"Final Signal: {action.upper()} ({confidence:.3f})")
             
@@ -1466,6 +1510,7 @@ class DemoKrakenBot:
             
         except Exception as e:
             self.logger.error(f"Error generating signals: {str(e)}")
+            self.logger.error(f"Exception traceback: {traceback.format_exc()}")
             return {'action': 'hold', 'confidence': 0.50}
 
     def get_minimum_order_requirements(self, symbol: str) -> dict:
