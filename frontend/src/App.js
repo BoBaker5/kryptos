@@ -99,16 +99,22 @@ function App() {
 
       const data = await response.json();
       
-      if (data.status === 'healthy') {
+      if (data && data.status === 'healthy') {
         setConnectionStatus('connected');
+        
+        // Safely extract bot status with type checking
+        const demoRunning = Boolean(data.bots?.demo?.running || false);
+        const liveRunning = Boolean(data.bots?.live?.running || false);
+        
         setBotStatus({
-          demo: data.bots?.demo?.running || false,
-          live: data.bots?.live?.running || false
+          demo: demoRunning,
+          live: liveRunning
         });
+        
         setLastError(null);
         setRetryCount(0);
       } else {
-        throw new Error(data.error || 'Service degraded');
+        throw new Error(data?.error || 'Service degraded');
       }
     } catch (error) {
       console.error('Connection error:', error);
