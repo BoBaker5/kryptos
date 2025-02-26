@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { DollarSign, TrendingUp, Activity } from 'lucide-react';
 
-const BotDashboard = ({ mode = 'demo', apiBaseUrl = '' }) => {
+const BotDashboard = ({ mode = 'demo', apiBaseUrl = '', onError = () => {}, isRunning = false, connectionStatus = 'disconnected' }) => {
   const [botData, setBotData] = useState({
     portfolio_value: 100000.00,  // Default initial value
     pnl: 0,
@@ -14,54 +14,104 @@ const BotDashboard = ({ mode = 'demo', apiBaseUrl = '' }) => {
 
   useEffect(() => {
     const fetchData = async () => {
+      if (connectionStatus !== 'connected') {
+        return; // Don't fetch if we're not connected
+      }
+      
       try {
         const response = await fetch(`${apiBaseUrl}/api/${mode}-status`);
         if (!response.ok) {
           throw new Error(`Server returned ${response.status}`);
         }
+        
         const data = await response.json();
         
-        if (data.status === 'success' && data.data) {
+        if (data && data.status === 'success' && data.data) {
+          // Safely parse numeric values with fallbacks
+          const portfolioValue = parseFloat(data.data.portfolio_value);
+          const pnl = parseFloat(data.data.pnl);
+          const pnlPercentage = parseFloat(data.data.pnl_percentage);
+          
+          // Get positions with safe numeric parsing
+          const safePositions = Array.isArray(data.data.positions) 
+            ? data.data.positions.map(pos => ({
+                ...pos,
+                quantity: parseFloat(pos.quantity) || 0,
+                entry_price: parseFloat(pos.entry_price) || 0,
+                current_price: parseFloat(pos.current_price) || 0,
+                pnl: parseFloat(pos.pnl) || 0,
+                pnl_percentage: parseFloat(pos.pnl_percentage) || 0
+              }))
+            : [];
+          
           setBotData({
-            portfolio_value: Number(data.data.portfolio_value) || 100000.00,
-            pnl: Number(data.data.pnl) || 0,
-            pnl_percentage: Number(data.data.pnl_percentage) || 0,
-            positions: data.data.positions || [],
-            running: data.data.running || false
+            portfolio_value: isNaN(portfolioValue) ? 100000.00 : portfolioValue,
+            pnl: isNaN(pnl) ? 0 : pnl,
+            pnl_percentage: isNaN(pnlPercentage) ? 0 : pnlPercentage,
+            positions: safePositions,
+            running: Boolean(data.data.running) || false
           });
+          
           setLastUpdate(new Date());
         }
       } catch (error) {
         console.error('Error fetching bot data:', error);
+        if (onError) {
+          onError(error.message);
+        }
       }
     };
 
     fetchData();
     const interval = setInterval(fetchData, 5000);
     return () => clearInterval(interval);
-  }, [mode, apiBaseUrl]);
+  }, [mode, apiBaseUrl, connectionStatus, onError]);
 
+  // Safe number formatting functions that handle non-numeric inputs
   const formatCurrency = (value) => {
+    // Make sure value is a valid number before formatting
+    const numValue = parseFloat(value);
+    const safeValue = isNaN(numValue) ? 0 : numValue;
+    
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
-    }).format(value || 0);
+    }).format(safeValue);
   };
 
   const formatPercent = (value) => {
-    return (value || 0).toFixed(2) + '%';
+    // Convert to number and provide fallback for invalid values
+    const numValue = parseFloat(value);
+    const safeValue = isNaN(numValue) ? 0 : numValue;
+    
+    return safeValue.toFixed(2) + '%';
+  };
+
+  // Calculate total value from positions safely
+  const calculateTotalPositionsValue = () => {
+    if (!Array.isArray(botData.positions) || botData.positions.length === 0) {
+      return 0;
+    }
+    
+    return botData.positions.reduce((sum, pos) => {
+      const quantity = parseFloat(pos.quantity) || 0;
+      const price = parseFloat(pos.current_price) || 0;
+      return sum + (quantity * price);
+    }, 0);
   };
 
   return (
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-slate-800">Demo Trading Dashboard</h1>
+        <h1 className="text-2xl font-bold text-slate-800">
+          {mode === 'demo' ? 'Demo' : 'Live'} Trading Dashboard
+        </h1>
         <div className="flex items-center space-x-2 text-sm text-slate-600">
           <span>Last update: {lastUpdate.toLocaleTimeString()}</span>
-          <div className={`h-2 w-2 rounded-full ${botData.running ? 'bg-green-500' : 'bg-red-500'}`} />
-          <span>{botData.running ? 'Bot active' : 'Bot inactive'}</span>
+          <div className={`h-2 w-2 rounded-full ${botData.running || isRunning ? 'bg-green-500' : 'bg-red-500'}`} />
+          <span>{botData.running || isRunning ? 'Bot active' : 'Bot inactive'}</span>
         </div>
       </div>
 
@@ -89,7 +139,7 @@ const BotDashboard = ({ mode = 'demo', apiBaseUrl = '' }) => {
           <p className="mt-2 text-2xl font-bold text-slate-800">
             {formatCurrency(botData.pnl)}
           </p>
-          <p className={`text-sm ${botData.pnl_percentage >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+          <p className={`text-sm ${parseFloat(botData.pnl_percentage) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
             {formatPercent(botData.pnl_percentage)}
           </p>
         </div>
@@ -101,18 +151,15 @@ const BotDashboard = ({ mode = 'demo', apiBaseUrl = '' }) => {
             <h2 className="text-sm font-medium text-slate-600">Active Positions</h2>
           </div>
           <p className="mt-2 text-2xl font-bold text-slate-800">
-            {botData.positions.length}
+            {Array.isArray(botData.positions) ? botData.positions.length : 0}
           </p>
           <p className="text-sm text-slate-500">
-            Total value: {formatCurrency(
-              botData.positions.reduce((sum, pos) => 
-                sum + (Number(pos.quantity) * Number(pos.current_price)), 0)
-            )}
+            Total value: {formatCurrency(calculateTotalPositionsValue())}
           </p>
         </div>
       </div>
 
-      {botData.positions.length > 0 ? (
+      {Array.isArray(botData.positions) && botData.positions.length > 0 ? (
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
           <div className="p-4 border-b border-slate-200">
             <h2 className="text-lg font-medium text-slate-800">Active Positions</h2>
@@ -129,13 +176,13 @@ const BotDashboard = ({ mode = 'demo', apiBaseUrl = '' }) => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {botData.positions.map((position) => (
-                  <tr key={position.symbol}>
+                {botData.positions.map((position, index) => (
+                  <tr key={position.symbol || `position-${index}`}>
                     <td className="px-4 py-3 text-sm text-slate-800 font-medium">{position.symbol}</td>
                     <td className="px-4 py-3 text-sm text-slate-600 text-right">{position.quantity}</td>
                     <td className="px-4 py-3 text-sm text-slate-600 text-right">{formatCurrency(position.entry_price)}</td>
                     <td className="px-4 py-3 text-sm text-slate-600 text-right">{formatCurrency(position.current_price)}</td>
-                    <td className={`px-4 py-3 text-sm text-right font-medium ${Number(position.pnl) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    <td className={`px-4 py-3 text-sm text-right font-medium ${parseFloat(position.pnl) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                       {formatCurrency(position.pnl)}
                       <span className="ml-1 text-xs">
                         ({formatPercent(position.pnl_percentage)})
