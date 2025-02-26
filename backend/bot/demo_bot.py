@@ -686,15 +686,15 @@ class DemoKrakenBot:
             
             # Risk parameters
             self.max_drawdown = 0.10
-            self.trailing_stop_pct = 0.03
+            self.trailing_stop_pct = 0.02
             self.max_trades_per_hour = 3
             self.trade_cooldown = 300
             self.last_trade_time = {}
             self.max_position_size = 0.3
             self.min_position_value = 2.0
             self.max_total_risk = 0.15
-            self.stop_loss_pct = 0.03
-            self.take_profit_pct = 0.05
+            self.stop_loss_pct = 0.02
+            self.take_profit_pct = 0.07
             self.min_zusd_balance = 5.0
             
             # Technical parameters
@@ -1383,14 +1383,14 @@ class DemoKrakenBot:
             # Calculate base confidence
             confidence = 0.5  # Start at neutral
     
-            # Strong buy signals
             if (trend > 0 and  # Uptrend
                 macd > macd_signal and  # MACD crossover
-                rsi > 50 and rsi < 70 and  # RSI showing strength but not overbought
-                volume_ratio > 1.2 and  # Above average volume
-                current_price > sma20):  # Price above short-term MA
-                confidence += 0.15
-                
+                rsi > 45 and rsi < 65 and  # RSI in better range
+                volume_ratio > 1.5 and  # Stronger volume confirmation
+                current_price > sma20 and  # Price above short-term MA
+                current_price > recent_low * 1.03):  # Price is 3% above recent low
+                confidence += 0.20  # Stronger confidence
+                            
             # Strong sell signals
             elif (trend < 0 and  # Downtrend
                   macd < macd_signal and  # MACD bearish
@@ -2327,13 +2327,55 @@ class DemoKrakenBot:
             if position_size < self.min_position_value:
                 self.logger.warning(f"Position size ${position_size:.2f} below minimum ${self.min_position_value}")
                 return 0
-                
+            
+            # Adjust position size based on volatility
+            current_data = self.get_current_market_data(symbol)
+            if current_data is not None:
+                volatility = current_data['returns'].rolling(20).std().iloc[-1]
+                # Reduce position size in high volatility
+                if volatility > 0.03:  # 3% daily volatility is high
+                    position_size *= 0.7  # Reduce by 30%
+                    self.logger.info(f"High volatility ({volatility:.2%}), reducing position size by 30%")
+                # Increase position size in low volatility
+                elif volatility < 0.01:  # 1% daily volatility is low
+                    position_size *= 1.2  # Increase by 20%
+                    self.logger.info(f"Low volatility ({volatility:.2%}), increasing position size by 20%")
+            
             return position_size
             
         except Exception as e:
             self.logger.error(f"Demo position size calculation error: {e}")
             return 0
+
+    def detect_market_regime(self, df: pd.DataFrame) -> str:
+        # Calculate market trend strength
+        adx = df['adx'].iloc[-1]
+        bb_width = df['bb_width'].iloc[-1]
         
+        if adx > 25 and df['sma_20'].iloc[-1] > df['sma_50'].iloc[-1]:
+            return "strong_uptrend"
+        elif adx > 25 and df['sma_20'].iloc[-1] < df['sma_50'].iloc[-1]:
+            return "strong_downtrend"
+        elif bb_width < 0.5:
+            return "consolidation"
+        else:
+            return "mixed"
+
+
+    def check_excessive_correlation(self) -> bool:
+        buy_count = 0
+        sell_count = 0
+        
+        for symbol in self.symbols:
+            if symbol in self.demo_positions:
+                buy_count += 1
+        
+        # Limit overexposure in one direction
+        if buy_count > len(self.symbols) * 0.7:  # More than 70% of assets
+            return True
+        
+        return False
+    
     async def retrain_models(self):
         try:
             # Collect new data
