@@ -571,35 +571,31 @@ class PositionTracker:
             }
         return None
 
-class RateLimiter:
-    def __init__(self, calls_per_second=0.2):  # More conservative rate - only 1 call per 5 seconds
-        self.calls_per_second = calls_per_second
-        self.last_call = time.time()
-        self.lock = asyncio.Lock()
-        self.backoff_time = 1.0
-        self.error_count = 0
-        self.max_backoff = 60.0  # Maximum backoff of 60 seconds
-        
-        # Add randomness to prevent synchronized calls
-        import random
-        self.random = random
+class DemoRateLimiter:
+    """Specialized rate limiter for demo mode that doesn't use Kraken API"""
+    def __init__(self):
+        self.last_price_fetch = {}
+        self.cache_duration = 10  # Cache prices for 10 seconds
 
-    async def wait(self):
-        """Wait to respect rate limits with added jitter"""
-        async with self.lock:
-            now = time.time()
-            time_since_last = now - self.last_call
+    def should_fetch_price(self, symbol):
+        """Determine if we should fetch a new price or use cached one"""
+        now = time.time()
+        if symbol not in self.last_price_fetch:
+            self.last_price_fetch[symbol] = {"time": now - self.cache_duration - 1, "price": None}
+            return True
             
-            # Add jitter (randomness) to prevent synchronized calls
-            jitter = self.random.uniform(0.1, 0.5)
-            
-            # Calculate wait time with buffer
-            wait_time = max(0, (1.0 / self.calls_per_second) - time_since_last + jitter)
-            
-            if wait_time > 0:
-                await asyncio.sleep(wait_time)
-            
-            self.last_call = time.time()
+        time_since_last = now - self.last_price_fetch[symbol]["time"]
+        return time_since_last > self.cache_duration
+        
+    def update_price(self, symbol, price):
+        """Update the cached price"""
+        self.last_price_fetch[symbol] = {"time": time.time(), "price": price}
+        
+    def get_cached_price(self, symbol):
+        """Get cached price if available"""
+        if symbol in self.last_price_fetch:
+            return self.last_price_fetch[symbol]["price"]
+        return None
             
     async def handle_rate_limit_error(self, seconds_exceeded=0):
         """Handle rate limit exceeded errors with exponential backoff"""
@@ -1597,8 +1593,8 @@ class DemoKrakenBot:
         else:
             return f"${price:.2f}"
         
-    async def execute_trade_with_risk_management(self, symbol: str, signal: dict, price: float):
-        """Simulate trade execution using real market prices"""
+    def execute_trade_demo(self, symbol: str, signal: dict, price: float):
+        """Simplified synchronous version for demo trades"""
         try:
             # Validate price
             if not price or price <= 0:
@@ -1708,7 +1704,7 @@ class DemoKrakenBot:
         except Exception as e:
             self.logger.error(f"Demo trade execution error: {e}")
             return None
-    
+            
     def update_trade_history(self, symbol: str, action: str, quantity: float):
         """Update local tracking of positions based on executed trades"""
         if symbol not in self.trade_history:
@@ -2390,6 +2386,14 @@ class DemoKrakenBot:
             return True
     
     def get_latest_price(self, symbol: str) -> Optional[float]:
+        """Get latest price with caching to reduce API calls"""
+        # Check if we should use cached price
+        if hasattr(self, 'demo_rate_limiter') and not self.demo_rate_limiter.should_fetch_price(symbol):
+            cached_price = self.demo_rate_limiter.get_cached_price(symbol)
+            if cached_price:
+                return cached_price
+        
+        # Proceed with normal price fetching
         max_retries = 3
         precision = {
             'SHIBUSD': 8,
@@ -2407,6 +2411,9 @@ class DemoKrakenBot:
                 if ohlc is not None and not ohlc.empty:
                     price = float(ohlc.iloc[-1]['close'])
                     if price > 0:
+                        # Cache the price
+                        if hasattr(self, 'demo_rate_limiter'):
+                            self.demo_rate_limiter.update_price(symbol, round(price, precision))
                         return round(price, precision)
                         
                 # Fallback to trades
@@ -2414,6 +2421,9 @@ class DemoKrakenBot:
                 if trades is not None and not trades.empty:
                     price = float(trades.iloc[0]['price'])
                     if price > 0:
+                        # Cache the price
+                        if hasattr(self, 'demo_rate_limiter'):
+                            self.demo_rate_limiter.update_price(symbol, round(price, precision))
                         return round(price, precision)
         
                 if attempt < max_retries - 1:
@@ -2443,43 +2453,105 @@ class DemoKrakenBot:
             self.logger.error(f"Error loading positions: {str(e)}")
             return False
     
-    async def monitor_positions(self):
-        """Monitor positions with proper validation"""
+    def handle_demo_position_monitoring(self):
+        """Special handler for demo mode positions that doesn't require API authentication"""
         try:
-            positions = self.k.get_open_positions()
+            current_time = datetime.now()
             
-            # Reset position tracker if no positions exist
-            if not positions or len(positions) == 0:
-                self.position_tracker.positions = {}
-                return
-                
-            for pos in positions:
-                # Validate position data
-                if not all(k in pos for k in ['pair', 'vol', 'price', 'cost']):
-                    continue
-                    
-                if float(pos['vol']) <= 0:
-                    continue
-                    
-                symbol = pos['pair']
-                qty = float(pos['vol'])
-                price = float(pos['cost']) / qty
-                
+            # For demo mode, we only need to use our locally tracked positions
+            positions_to_close = []  # Track positions that need to be closed
+            
+            for symbol, position in self.demo_positions.items():
                 current_price = self.get_latest_price(symbol)
-                if current_price:
-                    pnl = ((current_price - price) / price) * 100
-                    self.logger.info(f"\nPosition Update - {symbol}:")
-                    self.logger.info(f"Quantity: {qty}")
-                    self.logger.info(f"Entry: ${price:.4f}")
-                    self.logger.info(f"Current: ${current_price:.4f}")
-                    self.logger.info(f"P&L: {pnl:.2f}%")
+                if not current_price:
+                    self.logger.warning(f"Could not get current price for {symbol}")
+                    continue
                     
-                await asyncio.sleep(1)  # Rate limiting
+                entry_price = position['entry_price']
+                quantity = position['volume']
                 
+                # Calculate position metrics
+                position_value = quantity * current_price
+                unrealized_pnl = (current_price - entry_price) * quantity
+                pnl_percentage = ((current_price - entry_price) / entry_price) * 100
+                
+                # Update high price if we have a new high
+                if current_price > position['high_price']:
+                    position['high_price'] = current_price
+                
+                # Log position status
+                self.logger.info(f"\nPosition Update - {symbol}:")
+                self.logger.info(f"Quantity: {quantity:.8f}")
+                self.logger.info(f"Entry: ${entry_price:.8f}")
+                self.logger.info(f"Current: ${current_price:.8f}")
+                self.logger.info(f"P&L: ${unrealized_pnl:.2f} ({pnl_percentage:.2f}%)")
+                
+                # Check take profit
+                if pnl_percentage >= self.take_profit_pct * 100:
+                    self.logger.info(f"Take profit triggered for {symbol} at {pnl_percentage:.2f}%")
+                    positions_to_close.append({
+                        'symbol': symbol,
+                        'reason': 'take_profit',
+                        'price': current_price
+                    })
+                    continue
+                
+                # Check stop loss
+                if pnl_percentage <= -self.stop_loss_pct * 100:
+                    self.logger.info(f"Stop loss triggered for {symbol} at {pnl_percentage:.2f}%")
+                    positions_to_close.append({
+                        'symbol': symbol,
+                        'reason': 'stop_loss',
+                        'price': current_price
+                    })
+                    continue
+                
+                # Check trailing stop
+                if pnl_percentage > 0:  # Only check trailing stop if we're in profit
+                    highest_price = position['high_price']
+                    trailing_stop_price = highest_price * (1 - self.trailing_stop_pct)
+                    
+                    if current_price < trailing_stop_price:
+                        self.logger.info(f"Trailing stop triggered for {symbol} at ${current_price:.8f}")
+                        positions_to_close.append({
+                            'symbol': symbol,
+                            'reason': 'trailing_stop',
+                            'price': current_price
+                        })
+                        continue
+                
+                # Check maximum drawdown
+                if pnl_percentage <= -self.max_drawdown * 100:
+                    self.logger.info(f"Maximum drawdown triggered for {symbol} at {pnl_percentage:.2f}%")
+                    positions_to_close.append({
+                        'symbol': symbol,
+                        'reason': 'max_drawdown',
+                        'price': current_price
+                    })
+                    continue
+                    
+            # Close positions that triggered risk management rules
+            for close_order in positions_to_close:
+                symbol = close_order['symbol']
+                self.execute_trade_demo(
+                    symbol=symbol,
+                    signal={'action': 'sell', 'confidence': 1.0},
+                    price=close_order['price']
+                )
+                
+            # Update portfolio history
+            total_equity = self.calculate_total_equity()
+            self.portfolio_history.append({
+                'timestamp': current_time,
+                'balance': self.demo_balance['ZUSD'],
+                'equity': total_equity
+            })
+            
+            return True
         except Exception as e:
-            self.logger.error(f"Error monitoring positions: {str(e)}")
-            self.position_tracker.positions = {}  # Reset on error
-        
+            self.logger.error(f"Error in demo position monitoring: {str(e)}")
+            return False
+    
     def init_database(self):  # Changed method name to avoid conflict
         """Initialize database tables"""
         try:
