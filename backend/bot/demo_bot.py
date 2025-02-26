@@ -576,6 +576,9 @@ class DemoRateLimiter:
     def __init__(self):
         self.last_price_fetch = {}
         self.cache_duration = 10  # Cache prices for 10 seconds
+        self.error_count = 0
+        self.backoff_time = 1.0
+        self.max_backoff = 30.0  # Maximum backoff time in seconds
 
     def should_fetch_price(self, symbol):
         """Determine if we should fetch a new price or use cached one"""
@@ -596,6 +599,11 @@ class DemoRateLimiter:
         if symbol in self.last_price_fetch:
             return self.last_price_fetch[symbol]["price"]
         return None
+
+    async def wait(self):
+        """Add a wait method to handle rate limiting between API calls"""
+        # Simple implementation - just add a small delay between operations
+        await asyncio.sleep(0.5)
             
     async def handle_rate_limit_error(self, seconds_exceeded=0):
         """Handle rate limit exceeded errors with exponential backoff"""
@@ -623,7 +631,7 @@ class DemoRateLimiter:
             logging.info(f"Resetting rate limiter after {self.error_count} errors")
         self.backoff_time = 1.0
         self.error_count = 0
-
+        
 class DemoKrakenBot:
     def __init__(self):
         """Initialize the demo trading bot"""
