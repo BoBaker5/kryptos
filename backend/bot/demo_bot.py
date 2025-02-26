@@ -1860,6 +1860,20 @@ class DemoKrakenBot:
         except Exception as e:
             self.logger.error(f"Error initializing demo position tracking: {str(e)}")
             return False
+
+    def reset_demo_account(self):
+        """Reset demo account to initial state with $100,000"""
+        self.demo_balance = {'ZUSD': 100000.0}
+        self.demo_positions = {}
+        self.trade_history = []
+        self.portfolio_history = [{
+            'timestamp': datetime.now(),
+            'balance': 100000.0,
+            'equity': 100000.0
+        }]
+        self.save_demo_state()
+        self.logger.info("Demo account reset to $100,000")
+        return True
         
     def setup_database(self):
         """Set up SQLite database for storing trading data"""
