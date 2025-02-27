@@ -2415,29 +2415,41 @@ class DemoKrakenBot:
                     confidence_factor = 1.0 + (normalized_confidence * 0.5)  # Up to 1.5x size for highest conviction
                 
             position_size = base_position_size * confidence_factor
-            
-            # Adjust position size based on volatility
-            current_data = self.get_current_market_data(symbol)
-            if current_data is not None:
-                volatility = current_data['returns'].rolling(20).std().iloc[-1]
-                # Reduce position size in high volatility
-                if volatility > 0.03:  # 3% daily volatility is high
-                    position_size *= 0.7  # Reduce by 30%
-                    self.logger.info(f"High volatility ({volatility:.2%}), reducing position size by 30%")
-                # Increase position size in low volatility
-                elif volatility < 0.01:  # 1% daily volatility is low
-                    position_size *= 1.3  # Increase by 30% (more aggressive)
-                    self.logger.info(f"Low volatility ({volatility:.2%}), increasing position size by 30%")
+                
+            # Try to get historical data for volatility adjustment
+            try:
+                # First, try to get recent data
+                df = self.calculate_indicators(self.k.get_ohlc_data(symbol, interval=1, since=time.time()-86400)[0])
+                
+                if df is not None and len(df) > 0:
+                    # Calculate volatility from recent data
+                    volatility = df['returns'].rolling(20).std().iloc[-1]
                     
-            # Add market regime adjustment
-            if current_data is not None:
-                market_regime = self.detect_market_regime(current_data)
-                if market_regime == "strong_uptrend" and signal['action'] == 'buy':
-                    position_size *= 1.2  # Increase size in strong uptrends
-                    self.logger.info(f"Strong uptrend detected, increasing position size by 20%")
-                elif market_regime == "strong_downtrend" and signal['action'] == 'sell':
-                    position_size *= 1.2  # Increase size in strong downtrends for shorts
-                    self.logger.info(f"Strong downtrend detected, increasing position size by 20%")
+                    # Reduce position size in high volatility
+                    if volatility > 0.03:  # 3% daily volatility is high
+                        position_size *= 0.7  # Reduce by 30%
+                        self.logger.info(f"High volatility ({volatility:.2%}), reducing position size by 30%")
+                    # Increase position size in low volatility
+                    elif volatility < 0.01:  # 1% daily volatility is low
+                        position_size *= 1.3  # Increase by 30% (more aggressive)
+                        self.logger.info(f"Low volatility ({volatility:.2%}), increasing position size by 30%")
+                
+                # Try to determine market regime as well
+                try:
+                    market_regime = self.detect_market_regime(df)
+                    if market_regime == "strong_uptrend" and signal['action'] == 'buy':
+                        position_size *= 1.2  # Increase size in strong uptrends
+                        self.logger.info(f"Strong uptrend detected, increasing position size by 20%")
+                    elif market_regime == "strong_downtrend" and signal['action'] == 'sell':
+                        position_size *= 1.2  # Increase size in strong downtrends for shorts
+                        self.logger.info(f"Strong downtrend detected, increasing position size by 20%")
+                except Exception as e:
+                    # Just log and continue if market regime detection fails
+                    self.logger.warning(f"Market regime detection failed: {str(e)}")
+            
+            except Exception as e:
+                # Log but continue if volatility calculation fails
+                self.logger.warning(f"Volatility calculation skipped: {str(e)}")
             
             # Ensure minimum position size
             if position_size < self.min_position_value:
@@ -2449,7 +2461,7 @@ class DemoKrakenBot:
         except Exception as e:
             self.logger.error(f"Demo position size calculation error: {e}")
             return 0
-
+    
     def detect_market_regime(self, df: pd.DataFrame) -> str:
         """More aggressive market regime detection for profitable trading"""
         try:
