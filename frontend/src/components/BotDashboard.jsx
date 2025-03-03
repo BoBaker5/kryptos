@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { DollarSign, TrendingUp, Activity } from 'lucide-react';
+import { DollarSign, TrendingUp, Activity, ArrowUp, ArrowDown, RefreshCw, TrendingDown } from 'lucide-react';
 
 const BotDashboard = ({ mode = 'demo', apiBaseUrl = '', onError = () => {}, isRunning = false, connectionStatus = 'disconnected' }) => {
   const [botData, setBotData] = useState({
@@ -10,6 +10,8 @@ const BotDashboard = ({ mode = 'demo', apiBaseUrl = '', onError = () => {}, isRu
     positions: [],
     running: false
   });
+  const [tradeHistory, setTradeHistory] = useState([]);
+  const [loadingTrades, setLoadingTrades] = useState(false);
   const [lastUpdate, setLastUpdate] = useState(new Date());
 
   useEffect(() => {
@@ -62,9 +64,59 @@ const BotDashboard = ({ mode = 'demo', apiBaseUrl = '', onError = () => {}, isRu
       }
     };
 
+    // Fetch trade history
+    const fetchTradeHistory = async () => {
+      if (connectionStatus !== 'connected') {
+        return;
+      }
+      
+      try {
+        setLoadingTrades(true);
+        const response = await fetch(`${apiBaseUrl}/api/trade-history`);
+        
+        if (!response.ok) {
+          throw new Error(`Server returned ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (result && result.status === 'success' && Array.isArray(result.data)) {
+          // Format trade data
+          const formattedTrades = result.data.map(trade => ({
+            ...trade,
+            timestamp: new Date(trade.timestamp),
+            price: parseFloat(trade.price) || 0,
+            quantity: parseFloat(trade.quantity) || 0,
+            value: parseFloat(trade.value) || 0,
+            pnl: parseFloat(trade.pnl) || 0,
+            pnl_percentage: parseFloat(trade.pnl_percentage) || 0
+          }));
+          
+          // Sort by timestamp (newest first)
+          formattedTrades.sort((a, b) => b.timestamp - a.timestamp);
+          
+          setTradeHistory(formattedTrades);
+        }
+      } catch (error) {
+        console.error('Error fetching trade history:', error);
+        if (onError) {
+          onError('Failed to load trade history: ' + error.message);
+        }
+      } finally {
+        setLoadingTrades(false);
+      }
+    };
+
     fetchData();
-    const interval = setInterval(fetchData, 5000);
-    return () => clearInterval(interval);
+    fetchTradeHistory();
+    
+    const dataInterval = setInterval(fetchData, 5000);
+    const historyInterval = setInterval(fetchTradeHistory, 30000); // Refresh history less frequently
+    
+    return () => {
+      clearInterval(dataInterval);
+      clearInterval(historyInterval);
+    };
   }, [mode, apiBaseUrl, connectionStatus, onError]);
 
   // Safe number formatting functions that handle non-numeric inputs
@@ -101,6 +153,36 @@ const BotDashboard = ({ mode = 'demo', apiBaseUrl = '', onError = () => {}, isRu
       return sum + (quantity * price);
     }, 0);
   };
+
+  // Format trade timestamp
+  const formatDate = (date) => {
+    if (!(date instanceof Date) || isNaN(date.getTime())) {
+      return 'Invalid date';
+    }
+    return date.toLocaleString();
+  };
+
+  // Calculate trade performance metrics
+  const calculateTradeMetrics = () => {
+    if (!Array.isArray(tradeHistory) || tradeHistory.length === 0) {
+      return { totalTrades: 0, winningTrades: 0, losingTrades: 0, winRate: 0 };
+    }
+    
+    const sellTrades = tradeHistory.filter(trade => trade.type === 'sell');
+    const winningTrades = sellTrades.filter(trade => trade.pnl > 0).length;
+    const losingTrades = sellTrades.filter(trade => trade.pnl < 0).length;
+    const totalTrades = sellTrades.length;
+    const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
+    
+    return {
+      totalTrades,
+      winningTrades,
+      losingTrades,
+      winRate: winRate.toFixed(2)
+    };
+  };
+
+  const tradeMetrics = calculateTradeMetrics();
 
   return (
     <div className="p-6 space-y-6">
@@ -199,6 +281,127 @@ const BotDashboard = ({ mode = 'demo', apiBaseUrl = '', onError = () => {}, isRu
           No active positions
         </div>
       )}
+
+      {/* Trade History Section */}
+      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-slate-200 flex justify-between items-center">
+          <h2 className="text-lg font-medium text-slate-800">Trade History</h2>
+          <div className="flex items-center space-x-4">
+            <div className="text-sm text-slate-600 flex items-center space-x-2">
+              <span>Win Rate:</span>
+              <span className={`font-medium ${parseFloat(tradeMetrics.winRate) >= 50 ? 'text-green-600' : 'text-red-600'}`}>
+                {tradeMetrics.winRate}% ({tradeMetrics.winningTrades}/{tradeMetrics.totalTrades})
+              </span>
+            </div>
+            <button 
+              onClick={() => {
+                setLoadingTrades(true);
+                fetch(`${apiBaseUrl}/api/trade-history`)
+                  .then(response => response.json())
+                  .then(data => {
+                    if (data.status === 'success') {
+                      const formattedTrades = data.data.map(trade => ({
+                        ...trade,
+                        timestamp: new Date(trade.timestamp),
+                        price: parseFloat(trade.price) || 0,
+                        quantity: parseFloat(trade.quantity) || 0,
+                        value: parseFloat(trade.value) || 0,
+                        pnl: parseFloat(trade.pnl) || 0,
+                        pnl_percentage: parseFloat(trade.pnl_percentage) || 0
+                      }));
+                      formattedTrades.sort((a, b) => b.timestamp - a.timestamp);
+                      setTradeHistory(formattedTrades);
+                    }
+                    setLoadingTrades(false);
+                  })
+                  .catch(error => {
+                    console.error('Error refreshing trade history:', error);
+                    setLoadingTrades(false);
+                  });
+              }}
+              className="flex items-center text-sm text-slate-600 hover:text-blue-600"
+            >
+              <RefreshCw className={`h-4 w-4 mr-1 ${loadingTrades ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
+          </div>
+        </div>
+        
+        {loadingTrades && tradeHistory.length === 0 ? (
+          <div className="p-10 flex justify-center items-center">
+            <RefreshCw className="animate-spin h-5 w-5 text-blue-500 mr-2" />
+            <span className="text-slate-600">Loading trade history...</span>
+          </div>
+        ) : tradeHistory.length === 0 ? (
+          <div className="p-10 text-center text-slate-600">
+            No trade history available
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-slate-600">Date/Time</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-slate-600">Symbol</th>
+                  <th className="px-4 py-3 text-center text-sm font-medium text-slate-600">Type</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium text-slate-600">Price</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium text-slate-600">Quantity</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium text-slate-600">Value</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium text-slate-600">Profit/Loss</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {tradeHistory.map((trade, index) => (
+                  <tr key={`trade-${index}`} className="hover:bg-slate-50">
+                    <td className="px-4 py-3 text-sm text-slate-800">
+                      {formatDate(trade.timestamp)}
+                    </td>
+                    <td className="px-4 py-3 text-sm font-medium text-slate-800">
+                      {trade.symbol}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-center">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        trade.type === 'buy' 
+                          ? 'bg-blue-100 text-blue-800' 
+                          : 'bg-purple-100 text-purple-800'
+                      }`}>
+                        {trade.type === 'buy' ? <ArrowDown className="h-3 w-3 mr-1" /> : <ArrowUp className="h-3 w-3 mr-1" />}
+                        {trade.type.toUpperCase()}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-slate-600 text-right">
+                      {formatCurrency(trade.price)}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-slate-600 text-right">
+                      {trade.quantity.toFixed(8)}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-slate-600 text-right">
+                      {formatCurrency(trade.value)}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-right">
+                      {trade.type === 'sell' && (
+                        <div className={`flex items-center justify-end ${
+                          trade.pnl >= 0 ? 'text-green-600' : 'text-red-600'
+                        }`}>
+                          {trade.pnl >= 0 ? 
+                            <TrendingUp className="h-4 w-4 mr-1" /> : 
+                            <TrendingDown className="h-4 w-4 mr-1" />
+                          }
+                          <span>{formatCurrency(trade.pnl)}</span>
+                          <span className="ml-1 text-xs">({formatPercent(trade.pnl_percentage)})</span>
+                        </div>
+                      )}
+                      {trade.type === 'buy' && (
+                        <span className="text-slate-500">-</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
