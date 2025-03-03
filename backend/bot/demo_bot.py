@@ -850,7 +850,38 @@ class DemoKrakenBot:
         except Exception as e:
             self.logger.error(f"Error getting demo positions: {str(e)}")
             return []
-        
+
+    async def get_demo_trade_history(self):
+        """Get demo bot trade history"""
+        try:
+            if self.demo_bot and hasattr(self.demo_bot, 'trade_history'):
+                # Format trade history for API response
+                formatted_trades = []
+                for trade in self.demo_bot.trade_history:
+                    # Skip any system trades if needed
+                    if trade.get('symbol') == 'SYSTEM':
+                        continue
+                        
+                    # Format the trade record
+                    formatted_trade = {
+                        'timestamp': trade['timestamp'].isoformat() if isinstance(trade['timestamp'], datetime) else trade['timestamp'],
+                        'symbol': trade['symbol'],
+                        'type': trade['type'],
+                        'price': float(trade['price']),
+                        'quantity': float(trade['quantity']),
+                        'value': float(trade['value']),
+                        'profit_loss': float(trade.get('profit_loss', 0)),
+                        'pnl_percentage': float(trade.get('pnl_percentage', 0)),
+                        'entry_price': float(trade.get('entry_price', 0)) if 'entry_price' in trade else 0
+                    }
+                    formatted_trades.append(formatted_trade)
+                    
+                return formatted_trades
+            return []
+        except Exception as e:
+            self.logger.error(f"Error getting demo trade history: {str(e)}")
+            return []
+    
     def cleanup_old_data(self):
         """Cleanup old data to manage memory usage"""
         try:
