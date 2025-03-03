@@ -1444,7 +1444,7 @@ class DemoKrakenBot:
             return "mixed"  # Mixed or unclear market conditions
     
     def generate_enhanced_signals(self, df: pd.DataFrame, symbol: str) -> dict:
-        """Generate highly selective trading signals for maximum profit with reduced risk"""
+        """Generate highly selective trading signals optimized per coin"""
         try:
             if len(df) < self.sma_long:
                 return {'action': 'hold', 'confidence': 0.5}
@@ -1453,10 +1453,26 @@ class DemoKrakenBot:
             latest = df.iloc[-1]
             prev = df.iloc[-2] if len(df) > 1 else latest
             
-            # VOLUME FILTER - Strict volume requirements
-            volume_ratio = latest['volume_ma_ratio']
-            if volume_ratio < 1.2:  # Increased from 0.8 to 1.2 - only trade with strong volume
-                self.logger.info(f"Insufficient volume ({volume_ratio:.2f}), avoiding trade")
+            # COIN-SPECIFIC VOLUME THRESHOLDS
+            volume_thresholds = {
+                'SOLUSD': 0.8,    # More liquid coin, higher threshold
+                'AVAXUSD': 0.8,   # More liquid coin, higher threshold
+                'XRPUSD': 0.6,    # Medium liquidity, medium threshold
+                'XDGUSD': 0.2,    # Lower liquidity, lower threshold
+                'SHIBUSD': 0.15,  # Very low liquidity, much lower threshold
+                'PEPEUSD': 0.05   # Extremely low liquidity, minimal threshold
+            }
+            
+            # Default threshold if symbol not found
+            default_threshold = 0.5
+            
+            # Get appropriate threshold for this symbol
+            volume_threshold = volume_thresholds.get(symbol, default_threshold)
+            
+            # VOLUME FILTER - Use the coin-specific threshold
+            volume_ratio = latest['volume_ma_ratio'] 
+            if volume_ratio < volume_threshold:
+                self.logger.info(f"Insufficient volume ({volume_ratio:.2f}) for {symbol}, threshold: {volume_threshold}, avoiding trade")
                 return {'action': 'hold', 'confidence': 0.5}
             
             # Key indicators
@@ -1473,20 +1489,30 @@ class DemoKrakenBot:
             
             # Market cycle detection - ONLY trade in favorable market conditions
             market_cycle = self.detect_market_cycle(df)
-            self.logger.info(f"Detected market cycle: {market_cycle}")
+            self.logger.info(f"Detected market cycle for {symbol}: {market_cycle}")
             
-            # STRICT MARKET CONDITION FILTER - Only trade in bull trends or specific ranging markets
-            if market_cycle not in ["bull_trend", "ranging"]:
-                self.logger.info(f"Avoiding trades in {market_cycle} market")
+            # COIN-SPECIFIC MARKET CONDITION FILTERS
+            # Only allow certain coins in certain market conditions
+            favorable_markets = {
+                'SOLUSD': ["bull_trend", "ranging", "breakout"],
+                'AVAXUSD': ["bull_trend", "ranging", "breakout"],
+                'XRPUSD': ["bull_trend", "ranging_support", "breakout"], 
+                'XDGUSD': ["bull_trend", "breakout"],
+                'SHIBUSD': ["bull_trend"],
+                'PEPEUSD': ["bull_trend"]
+            }
+            
+            # Get favorable markets for this coin
+            allowed_markets = favorable_markets.get(symbol, ["bull_trend"])
+            
+            # STRICT MARKET CONDITION FILTER - Only trade in coin-specific favorable markets
+            if market_cycle not in allowed_markets:
+                self.logger.info(f"Avoiding trades for {symbol} in {market_cycle} market")
                 return {'action': 'hold', 'confidence': 0.5}
             
-            # ONLY ranging markets with positive bias
-            if market_cycle == "ranging" and trend < 0:
-                self.logger.info(f"Ranging market with negative bias, avoiding trade")
-                return {'action': 'hold', 'confidence': 0.5}
-            
-            # Build confirmation chain system - REQUIRE MORE CONFIRMATIONS
+            # Build confirmation chain system
             confirmations = 0
+            max_confirmations = 6
             
             # Price above BOTH key MAs
             if current_price > sma20 and current_price > sma50:
@@ -1498,8 +1524,8 @@ class DemoKrakenBot:
                 confirmations += 1
                 self.logger.info("✓ RSI in ideal range")
             
-            # Strong volume confirmation
-            if volume_ratio > 1.5:  # Increased from 1.2 to 1.5
+            # Volume confirmation
+            if volume_ratio > volume_threshold * 1.5:  # Strong volume (1.5x the threshold)
                 confirmations += 1
                 self.logger.info("✓ Strong volume confirmation")
             
@@ -1521,14 +1547,41 @@ class DemoKrakenBot:
             # Initialize confidence at neutral
             confidence = 0.5
             
-            # EXTREMELY SELECTIVE BUY - Require 6 out of 6 confirmations
-            if (confirmations >= 6 and  # Requires ALL confirmations (increased from 5)
+            # COIN-SPECIFIC CONFIDENCE THRESHOLDS
+            # Higher risk coins need more confirmations
+            required_confirmations = {
+                'SOLUSD': 5,      # Lower risk, require 5/6 confirmations
+                'AVAXUSD': 5,     # Lower risk, require 5/6 confirmations
+                'XRPUSD': 5,      # Medium risk, require 5/6 confirmations
+                'XDGUSD': 6,      # Higher risk, require ALL confirmations
+                'SHIBUSD': 6,     # Very high risk, require ALL confirmations
+                'PEPEUSD': 6      # Extremely high risk, require ALL confirmations
+            }
+            
+            default_required_confirmations = 6  # Default to requiring all confirmations
+            min_confirmations_needed = required_confirmations.get(symbol, default_required_confirmations)
+            
+            # EXTREMELY SELECTIVE BUY - Require coin-specific confirmation count
+            if (confirmations >= min_confirmations_needed and  
                 trend > 0 and  # Must be in uptrend
-                market_cycle == "bull_trend" and  # Must be in bull trend (stricter than before)
+                market_cycle in ["bull_trend", "breakout"] and  # Better market conditions
                 macd > macd_signal and macd > 0):  # MACD must be bullish and positive
                 
-                confidence = 0.65  # Strong buy
-                self.logger.info(f"STRONG BUY SIGNAL: {confirmations}/6 confirmations")
+                # Coin-specific confidence boost
+                confidence_boost = {
+                    'SOLUSD': 0.17,    # Higher confidence in SOL
+                    'AVAXUSD': 0.17,   # Higher confidence in AVAX
+                    'XRPUSD': 0.16,    # Medium confidence in XRP
+                    'XDGUSD': 0.15,    # Lower confidence in DOGE
+                    'SHIBUSD': 0.14,   # Lower confidence in SHIB
+                    'PEPEUSD': 0.14    # Lower confidence in PEPE
+                }
+                
+                default_boost = 0.15
+                boost = confidence_boost.get(symbol, default_boost)
+                
+                confidence = 0.5 + boost  # Coin-specific confidence boost
+                self.logger.info(f"STRONG BUY SIGNAL: {confirmations}/{max_confirmations} confirmations")
                 
             # MORE AGGRESSIVE PROFIT TAKING (SELL)
             elif (
@@ -1542,22 +1595,35 @@ class DemoKrakenBot:
             # Ensure confidence stays within bounds
             confidence = max(0.3, min(0.7, confidence))
             
+            # COIN-SPECIFIC BUY THRESHOLD - Higher thresholds for riskier coins
+            buy_thresholds = {
+                'SOLUSD': 0.64,    # Lower risk, lower threshold
+                'AVAXUSD': 0.64,   # Lower risk, lower threshold
+                'XRPUSD': 0.65,    # Medium risk, medium threshold
+                'XDGUSD': 0.66,    # Higher risk, higher threshold
+                'SHIBUSD': 0.67,   # Very high risk, very high threshold
+                'PEPEUSD': 0.67    # Extremely high risk, very high threshold
+            }
+            
+            default_buy_threshold = 0.66
+            buy_threshold = buy_thresholds.get(symbol, default_buy_threshold)
+            
             # MUCH MORE SELECTIVE BUY THRESHOLD - Require extremely high confidence
-            if confidence > 0.64:  # Increased from 0.62 to 0.64
+            if confidence > buy_threshold:
                 action = 'buy'
-            elif confidence < 0.42:  # More eager to take profits (changed from 0.45 to 0.42)
+            elif confidence < 0.42:  # Eager to take profits (changed from 0.45 to 0.42)
                 action = 'sell'
             else:
                 action = 'hold'
     
             # FINAL SAFETY CHECKS:
-            # 1. Don't buy without ALL confirmations
-            if action == 'buy' and confirmations < 6:
+            # 1. Don't buy without enough confirmations
+            if action == 'buy' and confirmations < min_confirmations_needed:
                 action = 'hold'
-                self.logger.info(f"Buy rejected: Only {confirmations}/6 confirmations")
+                self.logger.info(f"Buy rejected: Only {confirmations}/{min_confirmations_needed} confirmations")
             
             # 2. Don't buy in unfavorable market cycles
-            if action == 'buy' and market_cycle != "bull_trend":
+            if action == 'buy' and market_cycle not in ["bull_trend", "breakout"]:
                 action = 'hold'
                 self.logger.info(f"Buy rejected: Unfavorable market cycle: {market_cycle}")
             
@@ -1576,10 +1642,11 @@ class DemoKrakenBot:
             # Log final decision
             self.logger.info(f"{symbol} Analysis:")
             self.logger.info(f"Market Cycle: {market_cycle}")
-            self.logger.info(f"Confirmations: {confirmations}/6")
+            self.logger.info(f"Confirmations: {confirmations}/{max_confirmations}")
+            self.logger.info(f"Required Confirmations: {min_confirmations_needed}")
             self.logger.info(f"Trend: {'Bullish' if trend > 0 else 'Bearish'}")
             self.logger.info(f"RSI: {rsi:.2f}")
-            self.logger.info(f"Volume Ratio: {volume_ratio:.2f}")
+            self.logger.info(f"Volume Ratio: {volume_ratio:.2f} (Threshold: {volume_threshold})")
             self.logger.info(f"MACD: {macd:.6f}, Signal: {macd_signal:.6f}")
             self.logger.info(f"Final Signal: {action.upper()} ({confidence:.3f})")
             
@@ -1589,7 +1656,7 @@ class DemoKrakenBot:
             self.logger.error(f"Error generating signals: {str(e)}")
             self.logger.error(f"Exception traceback: {traceback.format_exc()}")
             return {'action': 'hold', 'confidence': 0.50}
-
+    
     def get_minimum_order_requirements(self, symbol: str) -> dict:
         """Get minimum order requirements for a given symbol"""
         try:
