@@ -1712,7 +1712,7 @@ class DemoKrakenBot:
             return f"${price:.2f}"
         
     def execute_trade_demo(self, symbol: str, signal: dict, price: float):
-        """Simplified synchronous version for demo trades"""
+        """Simplified synchronous version for demo trades with profit/loss tracking"""
         try:
             # Validate price
             if not price or price <= 0:
@@ -1733,6 +1733,7 @@ class DemoKrakenBot:
                 if symbol in self.demo_positions:
                     position = self.demo_positions[symbol]
                     quantity = position['volume']
+                    entry_price = position['entry_price']
                     
                     # Ensure minimum volume
                     if quantity < min_volume:
@@ -1742,12 +1743,17 @@ class DemoKrakenBot:
                     # Calculate sale value
                     sale_value = quantity * price
                     
+                    # Calculate profit/loss
+                    entry_value = quantity * entry_price
+                    profit_loss = sale_value - entry_value
+                    pnl_percentage = (profit_loss / entry_value) * 100
+                    
                     # Update balances
                     self.demo_balance['ZUSD'] += sale_value
                     self.demo_balance[symbol] = 0
                     del self.demo_positions[symbol]
                     
-                    # Record trade
+                    # Record trade with profit/loss information
                     trade = {
                         'timestamp': datetime.now(),
                         'symbol': symbol,
@@ -1755,7 +1761,10 @@ class DemoKrakenBot:
                         'price': price,
                         'quantity': quantity,
                         'value': sale_value,
-                        'balance_after': self.demo_balance['ZUSD']
+                        'balance_after': self.demo_balance['ZUSD'],
+                        'profit_loss': profit_loss,
+                        'pnl_percentage': pnl_percentage,
+                        'entry_price': entry_price
                     }
                     self.trade_history.append(trade)
                     
@@ -1767,6 +1776,7 @@ class DemoKrakenBot:
                     })
                     
                     self.logger.info(f"Demo SELL executed: {quantity} {symbol} @ ${price}")
+                    self.logger.info(f"P&L: ${profit_loss:.2f} ({pnl_percentage:.2f}%)")
                     return {'status': 'success', 'trade': trade}
                         
             # BUY LOGIC  
@@ -1803,7 +1813,9 @@ class DemoKrakenBot:
                     'price': price,
                     'quantity': quantity,
                     'value': position_size,
-                    'balance_after': self.demo_balance['ZUSD']
+                    'balance_after': self.demo_balance['ZUSD'],
+                    'profit_loss': 0,
+                    'pnl_percentage': 0
                 }
                 self.trade_history.append(trade)
                 
