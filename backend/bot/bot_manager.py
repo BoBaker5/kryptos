@@ -39,7 +39,8 @@ class BotManager:
                     'status': 'running',
                     'balance': {'ZUSD': self.demo_initial_balance},
                     'positions': {},
-                    'last_update': datetime.now()
+                    'last_update': datetime.now(),
+                    'trade_history': []  # Initialize empty trade history
                 }
                 self.demo_running = True
                 
@@ -113,3 +114,55 @@ class BotManager:
             except Exception as e:
                 self.logger.error(f"Error getting demo balance: {e}")
                 return {"ZUSD": float(self.demo_initial_balance)}
+    
+    async def get_demo_trade_history(self) -> List:
+        """Get demo bot trade history"""
+        async with self._lock:
+            try:
+                self.logger.info("Fetching demo trade history...")
+                if not self.demo_bot or not self.demo_running:
+                    return []
+                
+                # Try to get trade history from the demo bot
+                try:
+                    # First attempt to get from the demo_bot instance directly
+                    if hasattr(self.demo_bot, 'trade_history'):
+                        trade_history = self.demo_bot.trade_history
+                    # Fallback to dictionary access if it's stored that way
+                    else:
+                        trade_history = self.demo_bot.get('trade_history', [])
+                    
+                    # Format trades
+                    formatted_trades = []
+                    for trade in trade_history:
+                        # Skip any system trades if needed
+                        if isinstance(trade, dict) and trade.get('symbol') == 'SYSTEM':
+                            continue
+                            
+                        # Format the trade record
+                        try:
+                            formatted_trade = {
+                                'timestamp': trade['timestamp'].isoformat() if isinstance(trade.get('timestamp'), datetime) else trade.get('timestamp', ''),
+                                'symbol': trade.get('symbol', 'Unknown'),
+                                'type': trade.get('type', 'Unknown'),
+                                'price': float(trade.get('price', 0)),
+                                'quantity': float(trade.get('quantity', 0)),
+                                'value': float(trade.get('value', 0)),
+                                'profit_loss': float(trade.get('profit_loss', 0)),
+                                'pnl_percentage': float(trade.get('pnl_percentage', 0)),
+                                'entry_price': float(trade.get('entry_price', 0)) if 'entry_price' in trade else 0
+                            }
+                            formatted_trades.append(formatted_trade)
+                        except Exception as format_error:
+                            self.logger.error(f"Error formatting trade: {format_error}")
+                            continue
+                            
+                    return formatted_trades
+                    
+                except Exception as access_error:
+                    self.logger.error(f"Error accessing trade history: {access_error}")
+                    return []
+                    
+            except Exception as e:
+                self.logger.error(f"Error getting demo trade history: {str(e)}")
+                return []
