@@ -2685,7 +2685,7 @@ class DemoKrakenBot:
             return True
     
     def get_latest_price(self, symbol: str) -> Optional[float]:
-        """Get latest price with proper API calling and error handling"""
+        """Get latest price with real-time data and proper error handling"""
         # Add timestamp logging
         current_time = datetime.now()
         self.logger.info(f"Fetching real-time price for {symbol} at {current_time.strftime('%H:%M:%S.%f')[:-3]}")
@@ -2710,20 +2710,19 @@ class DemoKrakenBot:
         
         for attempt in range(max_retries):
             try:
-                # Try to use the ticker endpoint first (real-time data)
+                # Try using Ticker API (correct method for your version of pykrakenapi)
                 try:
-                    ticker_info = self.k.get_ticker(pair=symbol)
-                    if ticker_info is not None and isinstance(ticker_info, pd.DataFrame):
-                        if not ticker_info.empty:
-                            # Extract the most current price (last trade price)
-                            if 'c' in ticker_info.columns:
-                                price = float(ticker_info['c'].iloc[0])
-                                if price > 0:
-                                    self.logger.info(f"Got real-time ticker price for {symbol}: ${price}")
-                                    # Cache the price
-                                    if hasattr(self, 'demo_rate_limiter'):
-                                        self.demo_rate_limiter.update_price(symbol, round(price, precision))
-                                    return round(price, precision)
+                    # Use the proper ticker method based on your API version
+                    ticker = self.kraken.query_public('Ticker', {'pair': symbol})
+                    if ticker and 'result' in ticker and symbol in ticker['result']:
+                        # The 'c' field contains the last trade closed info: [price, volume]
+                        price = float(ticker['result'][symbol]['c'][0])
+                        if price > 0:
+                            self.logger.info(f"Got real-time ticker price for {symbol}: ${price}")
+                            # Cache the price
+                            if hasattr(self, 'demo_rate_limiter'):
+                                self.demo_rate_limiter.update_price(symbol, round(price, precision))
+                            return round(price, precision)
                 except Exception as ticker_error:
                     self.logger.warning(f"Ticker fetch error for {symbol}: {str(ticker_error)}")
                 
@@ -2738,16 +2737,19 @@ class DemoKrakenBot:
                             self.demo_rate_limiter.update_price(symbol, round(price, precision))
                         return round(price, precision)
                         
-                # Fallback to trades
-                trades = self.k.get_recent_trades(symbol)[0]
-                if trades is not None and not trades.empty:
-                    price = float(trades.iloc[0]['price'])
-                    if price > 0:
-                        self.logger.info(f"Got recent trades price for {symbol}: ${price}")
-                        # Cache the price
-                        if hasattr(self, 'demo_rate_limiter'):
-                            self.demo_rate_limiter.update_price(symbol, round(price, precision))
-                        return round(price, precision)
+                # Fallback to recent trades
+                try:
+                    trades = self.k.get_recent_trades(symbol)[0]
+                    if trades is not None and not trades.empty:
+                        price = float(trades.iloc[0]['price'])
+                        if price > 0:
+                            self.logger.info(f"Got recent trades price for {symbol}: ${price}")
+                            # Cache the price
+                            if hasattr(self, 'demo_rate_limiter'):
+                                self.demo_rate_limiter.update_price(symbol, round(price, precision))
+                            return round(price, precision)
+                except Exception as trades_error:
+                    self.logger.warning(f"Recent trades fetch error for {symbol}: {str(trades_error)}")
         
                 if attempt < max_retries - 1:
                     self.logger.warning(f"Retrying price fetch for {symbol}")
@@ -2760,21 +2762,6 @@ class DemoKrakenBot:
         
         self.logger.error(f"Failed to get price for {symbol}")
         return None
-    
-    async def initialize_position_tracking(self):
-        """Initialize position tracking with proper async handling"""
-        try:
-            positions = self.k.get_open_positions()
-            for pos in positions:
-                symbol = pos['pair']
-                qty = float(pos['vol'])
-                price = float(pos['cost'])
-                self.position_tracker.update_position(symbol, qty, price)
-                self.logger.info(f"Loaded existing position: {symbol}, Quantity: {qty}, Entry: ${price}")
-            return True
-        except Exception as e:
-            self.logger.error(f"Error loading positions: {str(e)}")
-            return False
     
     def handle_demo_position_monitoring(self):
         """Enhanced position monitoring with dynamic exit strategies"""
