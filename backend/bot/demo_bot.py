@@ -575,7 +575,7 @@ class DemoRateLimiter:
     """Specialized rate limiter for demo mode that doesn't use Kraken API"""
     def __init__(self):
         self.last_price_fetch = {}
-        self.cache_duration = 10  # Cache prices for 10 seconds
+        self.cache_duration = 5  # Cache prices for 10 seconds
         self.error_count = 0
         self.backoff_time = 1.0
         self.max_backoff = 30.0  # Maximum backoff time in seconds
@@ -652,7 +652,7 @@ class DemoKrakenBot:
             import random
             self.random = random
             
-            # Initialize Kraken API
+            # Initialize Kraken API - Direct connection to ensure fresh data
             self.kraken = krakenex.API()
             self.k = KrakenAPI(self.kraken, retry=0.5)
             self.running = True
@@ -691,7 +691,7 @@ class DemoKrakenBot:
                 "SHIBUSD": 0.10,
                 "PEPEUSD": 0.15
             }
-            
+                
             # Risk parameters
             self.max_drawdown = 0.50
             self.trailing_stop_pct = 0.012
@@ -1794,14 +1794,17 @@ class DemoKrakenBot:
         else:
             return f"${price:.2f}"
         
-    def execute_trade_demo(self, symbol: str, signal: dict, price: float):
-        """Simplified synchronous version for demo trades with profit/loss tracking"""
+    def execute_trade_demo(self, symbol: str, signal: dict, price: float = None):
+        """Simplified synchronous version for demo trades with live price data"""
         try:
-            # Validate price
+            # Always get fresh price at execution time
+            if price is None or price <= 0:
+                price = self.get_latest_price(symbol)
+                
             if not price or price <= 0:
                 self.logger.error(f"Invalid price for {symbol}: {price}")
                 return None
-        
+                
             # Calculate position size using demo balance
             position_size = self.calculate_position_size(symbol, signal)
             if position_size <= 0:
@@ -2682,11 +2685,16 @@ class DemoKrakenBot:
             return True
     
     def get_latest_price(self, symbol: str) -> Optional[float]:
-        """Get latest price with caching to reduce API calls"""
+        """Get latest price with proper API calling and error handling"""
+        # Add timestamp logging
+        current_time = datetime.now()
+        self.logger.info(f"Fetching real-time price for {symbol} at {current_time.strftime('%H:%M:%S.%f')[:-3]}")
+        
         # Check if we should use cached price
         if hasattr(self, 'demo_rate_limiter') and not self.demo_rate_limiter.should_fetch_price(symbol):
             cached_price = self.demo_rate_limiter.get_cached_price(symbol)
             if cached_price:
+                self.logger.info(f"Using cached price for {symbol}: ${cached_price}")
                 return cached_price
         
         # Proceed with normal price fetching
@@ -2702,11 +2710,29 @@ class DemoKrakenBot:
         
         for attempt in range(max_retries):
             try:
-                # Try OHLC first
+                # Try to use the ticker endpoint first (real-time data)
+                try:
+                    ticker_info = self.k.get_ticker(pair=symbol)
+                    if ticker_info is not None and isinstance(ticker_info, pd.DataFrame):
+                        if not ticker_info.empty:
+                            # Extract the most current price (last trade price)
+                            if 'c' in ticker_info.columns:
+                                price = float(ticker_info['c'].iloc[0])
+                                if price > 0:
+                                    self.logger.info(f"Got real-time ticker price for {symbol}: ${price}")
+                                    # Cache the price
+                                    if hasattr(self, 'demo_rate_limiter'):
+                                        self.demo_rate_limiter.update_price(symbol, round(price, precision))
+                                    return round(price, precision)
+                except Exception as ticker_error:
+                    self.logger.warning(f"Ticker fetch error for {symbol}: {str(ticker_error)}")
+                
+                # Fallback to OHLC if ticker fails
                 ohlc = self.k.get_ohlc_data(symbol, interval=1)[0]
                 if ohlc is not None and not ohlc.empty:
                     price = float(ohlc.iloc[-1]['close'])
                     if price > 0:
+                        self.logger.info(f"Got OHLC price for {symbol}: ${price}")
                         # Cache the price
                         if hasattr(self, 'demo_rate_limiter'):
                             self.demo_rate_limiter.update_price(symbol, round(price, precision))
@@ -2717,6 +2743,7 @@ class DemoKrakenBot:
                 if trades is not None and not trades.empty:
                     price = float(trades.iloc[0]['price'])
                     if price > 0:
+                        self.logger.info(f"Got recent trades price for {symbol}: ${price}")
                         # Cache the price
                         if hasattr(self, 'demo_rate_limiter'):
                             self.demo_rate_limiter.update_price(symbol, round(price, precision))
