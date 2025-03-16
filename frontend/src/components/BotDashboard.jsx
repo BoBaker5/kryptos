@@ -208,7 +208,7 @@ const BotDashboard = ({ mode = 'demo', apiBaseUrl = '', onError = () => {}, isRu
             {formatCurrency(botData.portfolio_value)}
           </p>
           <p className="text-sm text-slate-500">
-            Initial: {formatCurrency(100000.00)}
+            Initial: {formatCurrency(1000000.00)}
           </p>
         </div>
 
