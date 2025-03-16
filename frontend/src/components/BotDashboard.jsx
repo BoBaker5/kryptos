@@ -4,7 +4,7 @@ import { DollarSign, TrendingUp, Activity, ArrowUp, ArrowDown, RefreshCw, Trendi
 
 const BotDashboard = ({ mode = 'demo', apiBaseUrl = '', onError = () => {}, isRunning = false, connectionStatus = 'disconnected' }) => {
   const [botData, setBotData] = useState({
-    portfolio_value: 100000.00,  // Default initial value
+    portfolio_value: 1000000.00,  // Default initial value
     pnl: 0,
     pnl_percentage: 0,
     positions: [],
@@ -47,7 +47,7 @@ const BotDashboard = ({ mode = 'demo', apiBaseUrl = '', onError = () => {}, isRu
             : [];
           
           setBotData({
-            portfolio_value: isNaN(portfolioValue) ? 100000.00 : portfolioValue,
+            portfolio_value: isNaN(portfolioValue) ? 1000000.00 : portfolioValue,
             pnl: isNaN(pnl) ? 0 : pnl,
             pnl_percentage: isNaN(pnlPercentage) ? 0 : pnlPercentage,
             positions: safePositions,
